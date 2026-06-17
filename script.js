@@ -130,9 +130,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Profile Data Form Submission Handler ---
+    // --- Profile Data Form Submission Handler ---
     const metricsForm = document.getElementById('vitals-form');
     if (metricsForm) {
-        metricsForm.addEventListener('submit', (event) => {
+        metricsForm.addEventListener('submit', async (event) => { // Added 'async' here
             event.preventDefault(); // Intercept page reload mechanics
             
             // Map inputs to data state dictionary object
@@ -146,12 +147,33 @@ document.addEventListener('DOMContentLoaded', () => {
             const checkedStrategy = document.querySelector('input[name="training-strategy"]:checked');
             userSessionProfile.strategyGoal = checkedStrategy ? checkedStrategy.value : 'physique';
             
-            // Execute view render processing
-            renderDashboardSummary();
-            navigateToView('dashboard-view');
-        });
-    }
+            // --- NEW: API SYNC ENGINE ---
+            try {
+                // Send the data packet over to our running Flask backend
+                const response = await fetch('http://127.0.0.1:5000/api/profile', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(userSessionProfile)
+                });
 
+                const result = await response.json();
+
+                if (response.ok && result.status === 'success') {
+                    console.log("Backend Sync Successful:", result.message);
+                    // Execute view render processing and dashboard transition
+                    renderDashboardSummary();
+                    navigateToView('dashboard-view');
+                } else {
+                    alert(`Database Sync Failed: ${result.message}`);
+                }
+            } catch (error) {
+                console.error("Network Error during sync:", error);
+                alert("Could not connect to the ShonenFit local backend server. Make sure app.py is running!");
+            }
+        });
+    } 
     // --- Final Step Summary Builder ---
     function renderDashboardSummary() {
         const targetString = `${userSessionProfile.selectedCharacter} (${userSessionProfile.selectedUniverse.toUpperCase()})`;
