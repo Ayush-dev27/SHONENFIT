@@ -1,19 +1,19 @@
 // --- Database Configuration for Characters ---
 const UNIVERSE_CHARACTERS = {
     'jjk': [
-        { id: 'itadori', name: 'Yuji Itadori', desc: 'Incredible explosiveness, high leaping power, and raw brute strength endurance.' },
-        { id: 'toji', name: 'Toji Fushiguro', desc: 'Peak human anatomy. Unmatched functional core power, lean density, and velocity.' },
-        { id: 'maki', name: 'Maki Zenin', desc: 'High-tier agility conditioning, weapon core stability, and relentless physical output.' }
+        { id: 'itadori', name: 'Yuji Itadori', img: 'images/itadori.jpg', desc: 'Incredible explosiveness, high leaping power, and raw brute strength endurance.' },
+        { id: 'toji', name: 'Toji Fushiguro', img: 'images/toji.jpg', desc: 'Peak human anatomy. Unmatched functional core power, lean density, and velocity.' },
+        { id: 'maki', name: 'Maki Zenin', img: 'images/maki.jpg', desc: 'High-tier agility conditioning, weapon core stability, and relentless physical output.' }
     ],
     'demon-slayer': [
-        { id: 'tanjiro', name: 'Tanjiro Kamado', desc: 'Constant cardio lung-capacity adaptation, unilateral leg drive, and rotational sword speed.' },
-        { id: 'tengen', name: 'Tengen Uzui', desc: 'Massive shoulder/arm power, explosive speed bursts, and highly coordinated stamina chains.' },
-        { id: 'inosuke', name: 'Inosuke Hashibira', desc: 'Extreme multi-directional joint mobility, core flexibility, and unanchored athletic stamina.' }
+        { id: 'tanjiro', name: 'Tanjiro Kamado', img: 'images/tanjiro.jpg', desc: 'Constant cardio lung-capacity adaptation, unilateral leg drive, and rotational sword speed.' },
+        { id: 'tengen', name: 'Tengen Uzui', img: 'images/tengen.jpg', desc: 'Massive shoulder/arm power, explosive speed bursts, and highly coordinated stamina chains.' },
+        { id: 'inosuke', name: 'Inosuke Hashibira', img: 'images/inosuke.jpg', desc: 'Extreme multi-directional joint mobility, core flexibility, and unanchored athletic stamina.' }
     ],
     'mha': [
-        { id: 'deku', name: 'Izuku Midoriya (Deku)', desc: 'Full-body impact mechanics, reactive plyometrics, and progressive scaling overload resistance.' },
-        { id: 'bakugo', name: 'Katsuki Bakugo', desc: 'Explosive wrist/forearm mechanics, rapid direction-shift reaction tracking, and upper-body power.' },
-        { id: 'all-might', name: 'All Might (Prime)', desc: 'Maximum mass hypertrophy blueprint, foundational heavy compounds, and ultimate raw force generation.' }
+        { id: 'deku', name: 'Izuku Midoriya (Deku)', img: 'images/deku.jpg', desc: 'Full-body impact mechanics, reactive plyometrics, and progressive scaling overload resistance.' },
+        { id: 'bakugo', name: 'Katsuki Bakugo', img: 'images/bakugo.jpg', desc: 'Explosive wrist/forearm mechanics, rapid direction-shift reaction tracking, and upper-body power.' },
+        { id: 'all-might', name: 'All Might (Prime)', img: 'images/all-might.jpg', desc: 'Maximum mass hypertrophy blueprint, foundational heavy compounds, and ultimate raw force generation.' }
     ]
 };
 
@@ -81,7 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
             buildCharacterSelectionInterface(universeKey);
             navigateToView('character-view');
         });
-    });
+    }); 
 
     // --- Dynamic Character Selection Content Generation ---
     function buildCharacterSelectionInterface(universeKey) {
@@ -98,6 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const backgroundDiv = document.createElement('div');
             backgroundDiv.className = 'card-bg char-fallback';
+            backgroundDiv.style.backgroundImage = `linear-gradient(to top, #12141c 30%, rgba(0, 0, 0, 0.2)), url('${char.img}')`;
             
             const contentFrame = document.createElement('div');
             contentFrame.className = 'card-content';
