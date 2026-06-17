@@ -110,9 +110,9 @@ button { cursor: pointer; border: none; border-radius: 4px; font-weight: 700; tr
 .universe-card:hover .card-bg, .character-card:hover .card-bg { transform: scale(1.04); }
 
 /* Temporary Image Theme Engine placeholders */
-.card-jjk { background-image: linear-gradient(to top, #12141c 30%, rgba(0, 255, 216, 0.15)), url('https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?q=80&w=600'); }
-.card-demonslayer { background-image: linear-gradient(to top, #12141c 30%, rgba(255, 56, 56, 0.15)), url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=600'); }
-.card-mha { background-image: linear-gradient(to top, #12141c 30%, rgba(255, 221, 0, 0.15)), url('https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=600'); }
+.card-jjk { background-image: linear-gradient(to top, #12141c 30%, rgba(0, 255, 216, 0.15)), url('images/jjk-bg.jpg.jpg'); } 
+.card-demonslayer { background-image: linear-gradient(to top, #12141c 30%, rgba(255, 56, 56, 0.15)), url('images/ds-bg.jpg.jpg'); }
+.card-mha { background-image: linear-gradient(to top, #12141c 30%, rgba(255, 221, 0, 0.15)), url('images/mha-bg.jpg.jpg'); } 
 .char-fallback { background-image: linear-gradient(to top, #12141c 40%, rgba(255,255,255,0.1)); background-color: var(--surface-accent); }
 
 .card-content { position: relative; z-index: 2; padding: 30px; text-align: left; width: 100%; background: linear-gradient(to top, var(--surface-color) 40%, rgba(18, 20, 28, 0)); }
