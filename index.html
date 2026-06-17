@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SHONENFIT | Become Your Inspiration</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <header class="navbar">
+        <div class="logo">SHONEN<span>FIT</span></div>
+        <nav>
+            <ul class="nav-links">
+                <li><a href="#" class="nav-item active" data-target="hero-view">Home</a></li>
+                <li><a href="#" class="nav-item" data-target="universe-view">Universes</a></li>
+            </ul>
+        </nav>
+        <button class="btn-cta view-router-btn" data-target="universe-view">Start Your Journey</button>
+    </header>
+
+    <section id="hero-view" class="flow-view active">
+        <div class="hero-content">
+            <h1 class="hero-title">DON'T JUST WATCH THE <span class="highlight">HERO</span>.<br>BECOME THEM.</h1>
+            <p class="hero-subtitle">Stop following generic bodybuilding templates. Choose your universe, select your baseline character inspiration, lock in your metrics, and clone their path.</p>
+            <div class="hero-buttons">
+                <button class="btn-primary view-router-btn" data-target="universe-view">Choose Your Universe</button>
+            </div>
+        </div>
+    </section>
+
+    <section id="universe-view" class="flow-view">
+        <h2 class="section-title">CHOOSE YOUR <span class="highlight">UNIVERSE</span></h2>
+        <p class="section-subtitle">Your training paradigm depends entirely on your chosen battlefield.</p>
+        
+        <div class="universe-grid">
+            <div class="universe-card" data-universe="jjk">
+                <div class="card-bg card-jjk"></div>
+                <div class="card-content">
+                    <h3>Jujutsu Kaisen</h3>
+                    <p>Dark, gritty compound strength, high physical resilience, and raw explosive power.</p>
+                </div>
+            </div>
+            <div class="universe-card" data-universe="demon-slayer">
+                <div class="card-bg card-demonslayer"></div>
+                <div class="card-content">
+                    <h3>Demon Slayer</h3>
+                    <p>Insane cardiovascular endurance, core rotation, speed, and absolute breath control.</p>
+                </div>
+            </div>
+            <div class="universe-card" data-universe="mha">
+                <div class="card-bg card-mha"></div>
+                <div class="card-content">
+                    <h3>My Hero Academia</h3>
+                    <p>High-volume hypertrophy, progressive resistance, and breaking past absolute physical limits.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="character-view" class="flow-view">
+        <h2 class="section-title">CHOOSE YOUR <span class="highlight">INSPIRATION</span></h2>
+        <p class="section-subtitle">Select the specific archetype whose traits you want to claim.</p>
+        <div class="character-grid" id="character-pool">
+            </div>
+        <button class="btn-secondary back-btn" data-target="universe-view">← Back to Universes</button>
+    </section>
+
+    <section id="form-view" class="flow-view">
+        <h2 class="section-title">RECRUIT <span class="highlight">METRICS</span></h2>
+        <p class="section-subtitle">We need your current biological baselines to calculate your scaling algorithm.</p>
+        
+        <div class="form-container">
+            <form id="vitals-form">
+                <div class="form-group-row">
+                    <div class="form-group">
+                        <label for="user-age">Age (years)</label>
+                        <input type="number" id="user-age" required min="12" max="100" placeholder="e.g. 20">
+                    </div>
+                    <div class="form-group">
+                        <label for="user-height">Height (cm)</label>
+                        <input type="number" id="user-height" required min="100" max="250" placeholder="e.g. 175">
+                    </div>
+                    <div class="form-group">
+                        <label for="user-weight">Weight (kg)</label>
+                        <input type="number" id="user-weight" required min="30" max="200" placeholder="e.g. 70">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="user-history">Past Medical History / Injuries</label>
+                    <textarea id="user-history" rows="3" placeholder="List any past injuries or medical considerations (Write 'None' if clear)"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="user-prefs">Special Training Preferences</label>
+                    <textarea id="user-prefs" rows="2" placeholder="Home workout, gym access, specific equipment limits..."></textarea>
+                </div>
+
+                <div class="strategy-selection">
+                    <p class="strategy-label">CHOOSE YOUR PROGRAMMING DIRECTION:</p>
+                    <div class="strategy-options">
+                        <label class="strategy-card">
+                            <input type="radio" name="training-strategy" value="physique" checked>
+                            <div class="strategy-box">
+                                <h4>Physique Like Them</h4>
+                                <p>Hypertrophy, bodybuilding proportions, aesthetic mass, and target muscular symmetry.</p>
+                            </div>
+                        </label>
+                        <label class="strategy-card">
+                            <input type="radio" name="training-strategy" value="train-like">
+                            <div class="strategy-box">
+                                <h4>Train Like Them</h4>
+                                <p>Functional athleticism, pure power output, metabolic conditioning, and real-world agility.</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary back-btn" id="form-back-btn">← Back</button>
+                    <button type="submit" class="btn-primary">Generate Custom Path</button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <section id="dashboard-view" class="flow-view">
+        <div class="dashboard-card">
+            <h2>WELCOME TO THE RANKS</h2>
+            <div class="rank-badge">GRADE 4</div>
+            <p class="rank-notice">Your initial path is generated. You are standing at the lowest tier. Moving up to **Grade 3** takes unrelenting discipline and structural dedication over the next <strong>4–5 months</strong>.</p>
+            
+            <div class="summary-box">
+                <h3>YOUR GENERATED RUNTIME:</h3>
+                <p><strong>Selected Target:</strong> <span id="summary-target">None</span></p>
+                <p><strong>Strategy Selected:</strong> <span id="summary-strategy">None</span></p>
+                <p><strong>Current Standing:</strong> Grade 4 (0 EXP / 5000 EXP to Next Grade)</p>
+            </div>
+            
+            <button class="btn-primary" onclick="alert('System initialization complete. Accessing your workout log... Let\'s get to work.')">Access First Workout Routine</button>
+        </div>
+    </section>
+
+    <script src="script.js"></script>
+</body>
+</html> 
