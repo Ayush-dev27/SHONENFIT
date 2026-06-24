@@ -163,7 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (response.ok && result.status === 'success') {
                     console.log("Backend Sync Successful:", result.message);
                     // Execute view render processing and dashboard transition
-                    renderDashboardSummary();
+                    renderDashboardSummary(result.workout_data);
                     navigateToView('dashboard-view');
                 } else {
                     alert(`Database Sync Failed: ${result.message}`);
@@ -175,13 +175,43 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     } 
     // --- Final Step Summary Builder ---
-    function renderDashboardSummary() {
+    // --- Final Step Summary Builder ---
+    function renderDashboardSummary(workoutData = null) {
         const targetString = `${userSessionProfile.selectedCharacter} (${userSessionProfile.selectedUniverse.toUpperCase()})`;
         const strategyString = userSessionProfile.strategyGoal === 'physique' ? 'Physique Structural Optimization' : 'Functional Performance & Training Protocol';
         
         document.getElementById('summary-target').textContent = targetString;
         document.getElementById('summary-strategy').textContent = strategyString;
         
-        console.log("SHONENFIT Profile Construction Complete. Profile Payload Context Compiled:", userSessionProfile);
+        // Dynamic Exercise Logging Check for debugging
+        if (workoutData) {
+            console.log("🔥 WORKOUT DATA RECEIVED FROM ENGINE:", workoutData);
+            
+            // Access the summary container box from our dashboard view HTML
+            const summaryBox = document.querySelector('.summary-box');
+            
+            // Create a clean container list for our exercises
+            const exerciseListTitle = document.createElement('h4');
+            exerciseListTitle.style.marginTop = "15px";
+            exerciseListTitle.style.color = "var(--primary-color)";
+            exerciseListTitle.textContent = `ASSIGNED GENERATION: ${workoutData.core_focus_directive}`;
+            summaryBox.appendChild(exerciseListTitle);
+
+            const ul = document.createElement('ul');
+            ul.style.listStyle = "none";
+            ul.style.marginTop = "10px";
+            ul.style.paddingLeft = "0";
+
+            workoutData.assigned_workout_routine.forEach(ex => {
+                const li = document.createElement('li');
+                li.style.marginBottom = "12px";
+                li.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
+                li.style.paddingBottom = "6px";
+                li.innerHTML = `🎯 <strong>${ex.name}</strong> — ${ex.sets} sets x ${ex.reps}<br><span style="font-size:0.85rem; color:var(--text-muted);">${ex.coaching_cue}</span>`;
+                ul.appendChild(li);
+            });
+
+            summaryBox.appendChild(ul);
+        }
     }
 }); 

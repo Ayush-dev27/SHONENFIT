@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import sqlite3
+import sqlite3 
+
+from generator import generate_custom_routine 
 
 app = Flask(__name__)
 CORS(app)  # Enable Cross-Origin Resource Sharing so our JS frontend can hit this API
