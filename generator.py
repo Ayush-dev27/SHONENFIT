@@ -12,6 +12,26 @@ CHARACTER_TEMPLATES = {
             "exercises": ["Heavy Barbell Deadlifts", "Medicine Ball Rotational Slams", "Plyometric Box Jumps", "Kettlebell Swings", "Farmer's Walks"]
         }
     },
+    "itadori": {
+        "physique": {
+            "focus": "Thick, athletic torso development, explosive quad mass, and high-density functional shoulder width.",
+            "exercises": ["Barbell Back Squats", "Weighted Dips", "Barbell Bent Over Rows", "Hammer Curls", "Ab Wheel Rollouts"]
+        },
+        "train-like": {
+            "focus": "Insane knee/hip extension power, raw martial arts durability, and high-impact kinetic force tracking.",
+            "exercises": ["Power Cleans", "Plyometric Knee-to-Chest Jumps", "Heavy Sandbag Carries", "Medicine Ball Underhand Throws", "Burpee Pull-Ups"]
+        }
+    },
+    "maki": {
+        "physique": {
+            "focus": "V-taper upper back expansion, lean core definition, posture corrections, and unilateral lower body symmetry.",
+            "exercises": ["Lat Pulldowns", "Dumbbell Romanian Deadlifts", "Overhead Dumbbell Press", "Bulgarian Split Squats", "Plank Variations"]
+        },
+        "train-like": {
+            "focus": "Weapon handling grip stamina, elite rotational core velocity, lightning agility reflexes, and systemic conditioning.",
+            "exercises": ["Kettlebell Snatches", "Barbell Landmine Rotations", "Towel Pull-Ups", "Agility Ladder Fast-Footwork Chains", "Jump Rope Double Unders"]
+        }
+    },
     "tanjiro": {
         "physique": {
             "focus": "Lean, athletic muscle retention with high emphasis on quadriceps, core thickness, and upper back density.",
@@ -20,6 +40,26 @@ CHARACTER_TEMPLATES = {
         "train-like": {
             "focus": "Absolute VO2 max cardiovascular endurance, continuous breath control conditioning, and high-velocity sword forms.",
             "exercises": ["Dumbbell Thrusters", "High-Intensity Kettlebell Slashes", "Sprint Intervals (400m)", "Burpees", "Plank-to-Pushups"]
+        }
+    },
+    "tengen": {
+        "physique": {
+            "focus": "Flashy, maximalist hypertrophy design targeting explosive shoulder caps, massive bicep peaks, and thick chest volume.",
+            "exercises": ["Dumbbell Lateral Raises (High Volume)", "Incline Barbell Bench Press", "Barbell Bicep Curls", "Dumbbell Shrugs", "Cable Flyes"]
+        },
+        "train-like": {
+            "focus": "Heavy dual-load grip endurance, rapid directional kinetic speed bursts, and upper-body shock absorption.",
+            "exercises": ["Heavy Farmer's Walks", "Explosive Push-Ups (Clapping)", "Dumbbell Renegade Rows", "Sledgehammer Tire Slams", "Assault Bike Sprints"]
+        }
+    },
+    "inosuke": {
+        "physique": {
+            "focus": "Gritty, serratus anterior visibility, jagged lower abdominal definitions, and highly functional kinetic spinal thickness.",
+            "exercises": ["Hanging Toes-to-Bar", "Decline Dumbbell Bench Press", "Pull-Ups (Wide Grip)", "Walking Lunges", "Russian Twists"]
+        },
+        "train-like": {
+            "focus": "Unanchored multi-directional joint mobility, extreme posterior chain flexibility, and unpredictable animalistic endurance.",
+            "exercises": ["Deep Cossack Squats", "Bear Crawls (Timed)", "Kettlebell Windmills", "Burping Broad Jumps", "Hindu Push-Ups"]
         }
     },
     "deku": {
@@ -31,8 +71,28 @@ CHARACTER_TEMPLATES = {
             "focus": "Reactive plyometric impact management, full-body power distribution, kinetic chain conversion, and shock absorption.",
             "exercises": ["Depth Jumps to Explosive Bounds", "Power Cleans", "Clapping Push-Ups", "Heavy Sled Pushes", "Jump Squats"]
         }
+    },
+    "bakugo": {
+        "physique": {
+            "focus": "Explosive upper body symmetry focusing heavily on high-density forearms, wide lats, and powerful tricep extensions.",
+            "exercises": ["Close-Grip Bench Press", "Weighted Pull-Ups", "Barbell Wrist Curls", "Dumbbell Overhead Extensions", "Cable Rows"]
+        },
+        "train-like": {
+            "focus": "Rapid-fire upper extremity force output, elastic wrist/forearm conditioning, and fast-twitch dynamic redirection capabilities.",
+            "exercises": ["Medicine Ball Chest Passes", "Battle Rope Slams (Fast Tempo)", "Kettlebell Push Presses", "Box Drills (Lateral Bounds)", "Plank Jacks"]
+        }
+    },
+    "all-might": {
+        "physique": {
+            "focus": "Classic Golden-Era absolute mass hypertrophy, maximum skeletal load density, wide armor plate chest configuration.",
+            "exercises": ["Barbell Bench Press (Heavy)", "Barbell Back Squats (Heavy)", "Barbell Deadlifts (Heavy)", "Seated Barbell Overhead Press", "Barbell Curls"]
+        },
+        "train-like": {
+            "focus": "Ultimate kinetic force generation, breaking absolute maximal strength thresholds, full-body absolute structural stability.",
+            "exercises": ["Heavy Log Clean and Press", "Rack Pulls (Above Knee)", "Heavy Sled Drags", "Medicine Ball Overhead Slams", "Farmer's Carries (Max Weight)"]
+        }
     }
-}
+} 
 
 def generate_custom_routine(profile_data):
     """
