@@ -1,0 +1,16 @@
+# Database
+shonenfit.db
+*.db
+*.sqlite
+*.db-journal
+
+# Python local compiled cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment & AI agent logs
+.agents/
+.vscode/
+*.log 
