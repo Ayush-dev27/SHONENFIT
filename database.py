@@ -34,6 +34,17 @@ def init_db():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
     ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS workout_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            character_id TEXT NOT NULL,
+            paradigm TEXT NOT NULL,
+            sets_completed INTEGER NOT NULL,
+            exp_earned INTEGER NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     
     # Commit changes and close the connection
     conn.commit()

@@ -12,6 +12,36 @@ CORS(app)
 
 DATABASE_FILE = 'shonenfit.db'
 
+CHARACTER_DISPLAY_NAMES = {
+    'itadori': 'Yuji Itadori',
+    'toji': 'Toji Fushiguro',
+    'maki': 'Maki Zenin',
+    'tanjiro': 'Tanjiro Kamado',
+    'tengen': 'Tengen Uzui',
+    'inosuke': 'Inosuke Hashibira',
+    'deku': 'Izuku Midoriya (Deku)',
+    'bakugo': 'Katsuki Bakugo',
+    'all-might': 'All Might (Prime)',
+}
+
+def ensure_database_tables():
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS workout_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            character_id TEXT NOT NULL,
+            paradigm TEXT NOT NULL,
+            sets_completed INTEGER NOT NULL,
+            exp_earned INTEGER NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+ensure_database_tables()
+
 @app.route('/api/profile', methods=['POST'])
 def create_profile():
     try:
@@ -135,6 +165,9 @@ def complete_workout():
                 "message": "character_id and sets_completed are required."
             }), 400
 
+        sets_completed = int(sets_completed)
+        ensure_database_tables()
+
         conn = sqlite3.connect(DATABASE_FILE)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
@@ -160,6 +193,8 @@ def complete_workout():
         if xp_to_next_level == 1000:
             xp_to_next_level = 0 if grade_number == 1 else 1000
 
+        paradigm = data.get('paradigm') or user['training_strategy'] or 'train-like'
+
         cursor.execute('''
             UPDATE user_profiles
             SET total_exp = ?,
@@ -169,6 +204,17 @@ def complete_workout():
             total_exp,
             current_grade,
             user['id']
+        ))
+
+        cursor.execute('''
+            INSERT INTO workout_history (
+                character_id, paradigm, sets_completed, exp_earned
+            ) VALUES (?, ?, ?, ?)
+        ''', (
+            character_id,
+            paradigm,
+            sets_completed,
+            new_exp
         ))
 
         conn.commit()
@@ -181,6 +227,48 @@ def complete_workout():
             "current_grade": current_grade,
             "xp_to_next_level": xp_to_next_level
         }), 200
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+
+@app.route('/api/workout-history', methods=['GET'])
+def get_workout_history():
+    try:
+        ensure_database_tables()
+
+        conn = sqlite3.connect(DATABASE_FILE)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        rows = cursor.execute('''
+            SELECT id, character_id, paradigm, sets_completed, exp_earned, timestamp
+            FROM workout_history
+            ORDER BY timestamp DESC
+        ''').fetchall()
+
+        history = []
+        for row in rows:
+            character_id = row['character_id']
+            character_name = CHARACTER_DISPLAY_NAMES.get(character_id, character_id)
+            paradigm = row['paradigm']
+            sets_completed = row['sets_completed']
+            exp_earned = row['exp_earned']
+            timestamp = row['timestamp']
+
+            history.append({
+                "id": row['id'],
+                "character_id": character_id,
+                "character_name": character_name,
+                "paradigm": paradigm,
+                "sets_completed": sets_completed,
+                "exp_earned": exp_earned,
+                "timestamp": timestamp,
+                "summary": f"{character_name} completed {sets_completed} sets via {paradigm} and earned {exp_earned} EXP."
+            })
+
+        conn.close()
+        return jsonify(history), 200
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400

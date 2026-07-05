@@ -8,6 +8,7 @@
 
 const API_PROFILE_ENDPOINT = 'http://127.0.0.1:5000/api/profile';
 const API_WORKOUT_COMPLETE_ENDPOINT = 'http://127.0.0.1:5000/api/workout-complete';
+const API_WORKOUT_HISTORY_ENDPOINT = 'http://127.0.0.1:5000/api/workout-history';
 const TIMER_TOTAL_SECONDS = 90;
 
 const DEFAULT_PROFILE_VALUES = {
@@ -79,6 +80,7 @@ document.addEventListener('DOMContentLoaded', () => {
   ensureWorkoutRuntimeStyles();
   bindSetTrackingSelectors();
   initializeTimerDisplay();
+  fetchWorkoutHistory();
 });
 
 // ============================================================================
@@ -461,6 +463,96 @@ function createSummaryItem(label, valueId, value) {
   return item;
 }
 
+async function fetchWorkoutHistory() {
+  const container = ensureHistoryLogContainer();
+  if (!container) {
+    return;
+  }
+
+  try {
+    const response = await fetch(API_WORKOUT_HISTORY_ENDPOINT);
+    const history = await response.json();
+
+    if (!response.ok || !Array.isArray(history)) {
+      console.error('[SHONENFIT] Workout history fetch failed:', history);
+      renderWorkoutHistory([]);
+      return;
+    }
+
+    renderWorkoutHistory(history);
+  } catch (error) {
+    console.error('[SHONENFIT] Workout history network error:', error);
+    renderWorkoutHistory([]);
+  }
+}
+
+function ensureHistoryLogContainer() {
+  let container = document.getElementById('history-log-container');
+  if (container) {
+    return container;
+  }
+
+  const dashboardCard = document.querySelector('#dashboard-view .dashboard-card');
+  if (!dashboardCard) {
+    return null;
+  }
+
+  const historySection = document.createElement('div');
+  historySection.className = 'history-log-section';
+
+  const title = document.createElement('h3');
+  title.className = 'history-log-title';
+  title.textContent = 'Training Timeline';
+
+  container = document.createElement('div');
+  container.id = 'history-log-container';
+  container.className = 'history-log-container';
+
+  historySection.append(title, container);
+
+  const dashboardActions = dashboardCard.querySelector('.dashboard-actions');
+  dashboardCard.insertBefore(historySection, dashboardActions || null);
+
+  return container;
+}
+
+function renderWorkoutHistory(history) {
+  const container = ensureHistoryLogContainer();
+  if (!container) {
+    return;
+  }
+
+  container.innerHTML = '';
+
+  if (!history.length) {
+    const emptyState = document.createElement('p');
+    emptyState.className = 'history-empty-state';
+    emptyState.textContent = 'No completed training arcs logged yet.';
+    container.appendChild(emptyState);
+    return;
+  }
+
+  history.forEach((item) => {
+    const historyCard = document.createElement('div');
+    historyCard.className = 'history-item-card';
+
+    const timestamp = item.timestamp ? new Date(item.timestamp) : null;
+    const dateLabel = timestamp && !Number.isNaN(timestamp.getTime())
+      ? timestamp.toLocaleDateString()
+      : 'Recent';
+
+    historyCard.innerHTML = `
+      <div class="history-meta">
+        <span class="history-badge">${String(item.character_id || 'ARC').toUpperCase()}</span>
+        <span class="history-date">${dateLabel}</span>
+      </div>
+      <p class="history-text">Mastered the ${item.paradigm || 'training'} strategy path (${item.sets_completed || 0} sets logged) - <strong>+${item.exp_earned || 0} EXP</strong></p>
+    `;
+
+    container.appendChild(historyCard);
+  });
+}
+
 function formatStrategyLabel(strategy) {
   const normalized = String(strategy).toLowerCase();
 
@@ -611,6 +703,58 @@ function ensureWorkoutRuntimeStyles() {
       color: var(--bg-primary);
       font-weight: 800;
       box-shadow: 0 0 20px rgba(255, 42, 81, 0.5);
+    }
+
+    .history-log-section {
+      margin-top: 2rem;
+    }
+
+    .history-log-title {
+      color: var(--text-primary);
+      font-size: 1.1rem;
+      letter-spacing: 0.5px;
+      margin: 0 0 1rem;
+      text-transform: uppercase;
+    }
+
+    .history-log-container {
+      display: grid;
+      gap: 0.875rem;
+    }
+
+    .history-item-card,
+    .history-empty-state {
+      background: rgba(18, 20, 28, 0.72);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 1rem;
+    }
+
+    .history-meta {
+      align-items: center;
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 0.65rem;
+    }
+
+    .history-badge {
+      color: var(--accent-primary);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.7px;
+    }
+
+    .history-date,
+    .history-empty-state {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+    }
+
+    .history-text {
+      color: var(--text-primary);
+      line-height: 1.55;
+      margin: 0;
     }
   `;
   document.head.appendChild(style);
@@ -810,6 +954,7 @@ async function completeWorkout(event) {
     }
 
     updateDashboardExpBoost(completedSets, result);
+    await fetchWorkoutHistory();
     alert(`Training Complete! Checked off ${completedSets} sets. ${result.new_exp} EXP claimed toward Grade 3 Ascension.`);
     resetRestTimer();
     navigateView('dashboard-view');
