@@ -7,6 +7,7 @@
 // ============================================================================
 
 const API_PROFILE_ENDPOINT = 'http://127.0.0.1:5000/api/profile';
+const API_WORKOUT_COMPLETE_ENDPOINT = 'http://127.0.0.1:5000/api/workout-complete';
 const TIMER_TOTAL_SECONDS = 90;
 
 const DEFAULT_PROFILE_VALUES = {
@@ -42,24 +43,27 @@ let timeRemaining = TIMER_TOTAL_SECONDS;
 let audioContext = null;
 
 const characterDatabase = {
-  'Jujutsu Kaisen': [
-    { id: 1, name: 'Yuji Itadori', focus: 'All-around Strength', tier: 'Special Grade' },
-    { id: 2, name: 'Megumi Fushiguro', focus: 'Tactical Power', tier: 'Grade 1' },
-    { id: 3, name: 'Nobara Kugisaki', focus: 'Explosive Speed', tier: 'Grade 1' },
-    { id: 4, name: 'Gojo Satoru', focus: 'Peak Performance', tier: 'Special Grade' },
+  jjk: [
+    { id: 'itadori', name: 'Yuji Itadori', desc: 'Incredible explosiveness, high leaping power, and raw brute strength endurance.', image: 'images/itadori.jpg', imgFilename: './images/itadori.jpg', objectPosition: 'center' },
+    { id: 'toji', name: 'Toji Fushiguro', desc: 'Peak human anatomy. Unmatched functional core power, lean density, and velocity.', image: 'images/toji.jpg', imgFilename: './images/toji.jpg', objectPosition: 'center' },
+    { id: 'maki', name: 'Maki Zenin', desc: 'High-tier agility conditioning, weapon core stability, and relentless physical output.', image: 'images/maki.jpg', imgFilename: './images/maki.jpg', objectPosition: 'top' },
   ],
-  'Demon Slayer': [
-    { id: 5, name: 'Tanjiro Kamado', focus: 'Endurance Build', tier: 'Hashira' },
-    { id: 6, name: 'Inosuke Hashibira', focus: 'Explosive Power', tier: 'Hashira' },
-    { id: 7, name: 'Zenitsu Agatsuma', focus: 'Speed & Reflexes', tier: 'Hashira' },
-    { id: 8, name: 'Giyu Tomioka', focus: 'Composed Strength', tier: 'Hashira' },
+  'demon-slayer': [
+    { id: 'tanjiro', name: 'Tanjiro Kamado', desc: 'Constant cardio lung-capacity adaptation, unilateral leg drive, and rotational sword speed.', image: 'images/tanjiro.jpg', imgFilename: './images/tanjiro.jpg', objectPosition: 'center' },
+    { id: 'tengen', name: 'Tengen Uzui', desc: 'Massive shoulder/arm power, explosive speed bursts, and highly coordinated stamina chains.', image: 'images/tengen.jpg', imgFilename: './images/tengen.jpg', objectPosition: 'center' },
+    { id: 'inosuke', name: 'Inosuke Hashibira', desc: 'Extreme multi-directional joint mobility, core flexibility, and unanchored athletic stamina.', image: 'images/inosuke.jpg', imgFilename: './images/inosuke.jpg', objectPosition: 'center' },
   ],
-  'My Hero Academia': [
-    { id: 9, name: 'Izuku Midoriya', focus: 'Power Control', tier: 'Pro Hero' },
-    { id: 10, name: 'Bakugo Katsuki', focus: 'Aggressive Dominance', tier: 'Pro Hero' },
-    { id: 11, name: 'Todoroki Shoto', focus: 'Balanced Mastery', tier: 'Pro Hero' },
-    { id: 12, name: 'All Might', focus: 'Peak Heroism', tier: 'Legend' },
+  mha: [
+    { id: 'deku', name: 'Izuku Midoriya (Deku)', desc: 'Full-body impact mechanics, reactive plyometrics, and progressive scaling overload resistance.', image: 'images/deku.jpg', imgFilename: './images/deku.jpg', objectPosition: 'center' },
+    { id: 'bakugo', name: 'Katsuki Bakugo', desc: 'Explosive wrist/forearm mechanics, rapid direction-shift reaction tracking, and upper-body power.', image: 'images/bakugo.jpg', imgFilename: './images/bakugo.jpg', objectPosition: 'center' },
+    { id: 'all-might', name: 'All Might (Prime)', desc: 'Maximum mass hypertrophy blueprint, foundational heavy compounds, and ultimate raw force generation.', image: 'images/all-might.jpg', imgFilename: './images/all-might.jpg', objectPosition: 'center' },
   ],
+};
+
+const universeCardBackgrounds = {
+  'Jujutsu Kaisen': 'images/jjk-bg.jpg.jpg',
+  'Demon Slayer': 'images/ds-bg.jpg.jpg',
+  'My Hero Academia': 'images/mha-bg.jpg.jpg',
 };
 
 // ============================================================================
@@ -68,10 +72,12 @@ const characterDatabase = {
 
 document.addEventListener('DOMContentLoaded', () => {
   installGlobalNavigationInterception();
+  applyUniverseCardGraphics();
   wireMetricsSubmission();
   wireWorkoutRouteButton();
   wireWorkoutControlButtons();
   ensureWorkoutRuntimeStyles();
+  bindSetTrackingSelectors();
   initializeTimerDisplay();
 });
 
@@ -102,14 +108,16 @@ function MapsToView(viewId) {
 // ============================================================================
 
 function selectUniverse(universeName) {
-  appState.selectedUniverse = universeName;
-  populateCharacterPool(universeName);
+  const universeKey = normalizeUniverseKey(universeName);
+  appState.selectedUniverse = universeKey;
+  populateCharacterPool(universeKey);
   navigateView('character-view');
 }
 
 function populateCharacterPool(universeName) {
   const pool = document.getElementById('character-pool');
-  const characters = characterDatabase[universeName] || [];
+  const universeKey = normalizeUniverseKey(universeName);
+  const characters = characterDatabase[universeKey] || [];
 
   if (!pool) {
     return;
@@ -121,19 +129,58 @@ function populateCharacterPool(universeName) {
     const card = document.createElement('div');
     card.className = 'character-card';
     card.innerHTML = `
+      <img src="${character.image || character.imgFilename}" alt="${character.name} Visual Inspiration" class="character-card-visual" style="object-fit: cover; object-position: ${character.objectPosition || 'center'};">
       <h4 style="color: var(--text-primary); margin: 0 0 0.5rem 0;">${character.name}</h4>
-      <p style="color: var(--accent-primary); font-weight: 700; font-size: 0.9rem; margin: 0 0 0.5rem 0;">${character.tier}</p>
-      <p style="color: var(--text-secondary); font-size: 0.85rem; margin: 0;">${character.focus}</p>
+      <p style="color: var(--text-secondary); font-size: 0.85rem; margin: 0;">${character.desc}</p>
     `;
-    card.addEventListener('click', () => selectCharacter(character.name, universeName));
+    card.addEventListener('click', () => selectCharacter(character.name, universeKey));
     pool.appendChild(card);
   });
 }
 
 function selectCharacter(characterName, universeName) {
   appState.selectedCharacter = characterName;
-  appState.selectedUniverse = universeName || appState.selectedUniverse;
+  appState.selectedUniverse = normalizeUniverseKey(universeName || appState.selectedUniverse);
   navigateView('form-view');
+}
+
+function normalizeUniverseKey(universeName) {
+  const universeMap = {
+    'Jujutsu Kaisen': 'jjk',
+    'Demon Slayer': 'demon-slayer',
+    'My Hero Academia': 'mha',
+  };
+
+  return universeMap[universeName] || universeName;
+}
+
+function applyUniverseCardGraphics() {
+  document.querySelectorAll('.universe-card').forEach((card) => {
+    const title = card.querySelector('.card-title')?.textContent?.trim();
+    const visual = card.querySelector('.card-visual');
+    const imagePath = universeCardBackgrounds[title];
+
+    if (!visual || !imagePath) {
+      return;
+    }
+
+    visual.innerHTML = '';
+    visual.style.backgroundImage = `linear-gradient(180deg, rgba(12, 14, 20, 0.1) 0%, rgba(12, 14, 20, 0.55) 62%, rgba(12, 14, 20, 0.92) 100%), url('${imagePath}')`;
+    visual.style.backgroundSize = 'cover';
+    visual.style.backgroundPosition = 'center';
+    visual.style.filter = 'saturate(1.05) contrast(1.05)';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'universe-card-visual-mask';
+    Object.assign(overlay.style, {
+      position: 'absolute',
+      inset: '0',
+      background: 'linear-gradient(135deg, rgba(12, 14, 20, 0.08), rgba(12, 14, 20, 0.72))',
+      backdropFilter: 'brightness(0.95)',
+      pointerEvents: 'none',
+    });
+    visual.appendChild(overlay);
+  });
 }
 
 // ============================================================================
@@ -503,18 +550,19 @@ function populateWorkoutExercises() {
     for (let setIndex = 1; setIndex <= 4; setIndex += 1) {
       const setButton = document.createElement('button');
       setButton.type = 'button';
-      setButton.className = 'set-button';
+      setButton.className = 'set-button set-btn';
       setButton.textContent = `Set ${setIndex}`;
       setButton.dataset.exerciseIndex = String(index);
       setButton.dataset.set = String(setIndex);
       setButton.setAttribute('aria-pressed', 'false');
-      setButton.addEventListener('click', () => toggleSet(setButton));
       setButtons.appendChild(setButton);
     }
 
     card.append(title, meta, setButtons);
     container.appendChild(card);
   });
+
+  bindSetTrackingSelectors(container);
 }
 
 function getAssignedWorkoutRoutine(workoutData = appState.latestWorkoutData) {
@@ -529,6 +577,23 @@ function toggleSet(button) {
   button.setAttribute('aria-pressed', String(isActive));
 }
 
+function bindSetTrackingSelectors(scope = document) {
+  const setBubbles = scope.querySelectorAll('.set-btn, .set-button, .exercise-card button');
+
+  setBubbles.forEach((bubble) => {
+    if (bubble.dataset.setTrackingBound === 'true') {
+      return;
+    }
+
+    bubble.dataset.setTrackingBound = 'true';
+    bubble.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleSet(bubble);
+    });
+  });
+}
+
 function ensureWorkoutRuntimeStyles() {
   if (document.getElementById('workout-runtime-styles')) {
     return;
@@ -537,7 +602,10 @@ function ensureWorkoutRuntimeStyles() {
   const style = document.createElement('style');
   style.id = 'workout-runtime-styles';
   style.textContent = `
-    #exercise-cards-container .set-button.active {
+    #exercise-cards-container .set-button.active,
+    #exercise-cards-container .set-button.completed,
+    #exercise-cards-container .set-btn.active,
+    #exercise-cards-container .set-btn.completed {
       background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
       border-color: var(--accent-primary);
       color: var(--bg-primary);
@@ -584,7 +652,8 @@ function toggleRestTimer() {
   prepareAudioContext();
 
   if (timeRemaining <= 0) {
-    resetRestTimer();
+    timeRemaining = TIMER_TOTAL_SECONDS;
+    renderTimer();
   }
 
   if (timerRunning) {
@@ -593,35 +662,39 @@ function toggleRestTimer() {
   }
 
   timerRunning = true;
-  updateTimerButton('Pause Rest Timer');
+  updateTimerButton('PAUSE ENERGY FOCUS');
 
   timerInterval = window.setInterval(() => {
     timeRemaining = Math.max(0, timeRemaining - 1);
     renderTimer();
 
     if (timeRemaining === 0) {
-      pauseRestTimer();
-      updateTimerButton('Rest Complete / Restart Timer');
+      stopRestTimer();
+      updateTimerButton('START REST');
       playTimerCompleteCue();
     }
   }, 1000);
 }
 
 function pauseRestTimer() {
+  stopRestTimer();
+
+  if (timeRemaining > 0) {
+    updateTimerButton(timeRemaining === TIMER_TOTAL_SECONDS ? 'Start Rest / Resume Timer' : 'Start Rest / Resume Timer');
+  }
+}
+
+function stopRestTimer() {
   if (timerInterval) {
     window.clearInterval(timerInterval);
     timerInterval = null;
   }
 
   timerRunning = false;
-
-  if (timeRemaining > 0) {
-    updateTimerButton(timeRemaining === TIMER_TOTAL_SECONDS ? 'Start Rest / Resume Timer' : 'Resume Timer');
-  }
 }
 
 function resetRestTimer() {
-  pauseRestTimer();
+  stopRestTimer();
   timeRemaining = TIMER_TOTAL_SECONDS;
   renderTimer();
   updateTimerButton('Start Rest / Resume Timer');
@@ -708,35 +781,90 @@ function playTimerCompleteCue() {
 // MISSION COMPLETION
 // ============================================================================
 
-function completeWorkout(event) {
+async function completeWorkout(event) {
   event?.preventDefault();
+  event?.stopPropagation();
 
-  const completedSets = document.querySelectorAll('#exercise-cards-container .set-button.active').length;
-  const totalSets = document.querySelectorAll('#exercise-cards-container .set-button').length;
-  const completedExercises = Array.from(document.querySelectorAll('#exercise-cards-container .exercise-card'))
-    .filter((card) => card.querySelectorAll('.set-button.active').length === 4).length;
-  const totalExercises = document.querySelectorAll('#exercise-cards-container .exercise-card').length;
-  const workoutData = appState.latestWorkoutData || {};
-  const metrics = appState.userMetrics;
-  const elapsedRestSeconds = TIMER_TOTAL_SECONDS - timeRemaining;
-  const restLabel = elapsedRestSeconds > 0 ? formatTime(elapsedRestSeconds) : 'No rest timer used';
+  const completedSets = document.querySelectorAll(
+    '#exercise-cards-container .set-btn.active, #exercise-cards-container .set-button.active, #exercise-cards-container .set-btn.completed, #exercise-cards-container .set-button.completed',
+  ).length;
+  const payload = {
+    character_id: getActiveCharacterId(),
+    sets_completed: completedSets,
+  };
 
-  const summary = [
-    `Training arc complete for ${workoutData.character_alignment || appState.selectedCharacter || 'Unassigned Warrior'}.`,
-    '',
-    `Focus: ${workoutData.core_focus_directive || 'Live Training Protocol'}`,
-    `Strategy: ${formatStrategyLabel(workoutData.strategy_paradigm || appState.selectedDirection || 'train-like')}`,
-    `Exercises Completed: ${completedExercises}/${totalExercises}`,
-    `Sets Logged: ${completedSets}/${totalSets}`,
-    `Rest Timer Logged: ${restLabel}`,
-    `Biometrics: ${metrics.age || '--'} yrs, ${metrics.height || '--'} cm, ${metrics.weight || '--'} kg`,
-    '',
-    'Claim 250 EXP and return to dashboard?',
-  ].join('\n');
+  try {
+    const response = await fetch(API_WORKOUT_COMPLETE_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
 
-  window.confirm(summary);
-  resetRestTimer();
-  navigateView('dashboard-view');
+    if (!response.ok || result?.status !== 'success') {
+      console.error('[SHONENFIT] Workout completion sync failed:', result);
+      alert(`Workout completion failed: ${result?.message || `HTTP ${response.status}`}`);
+      return;
+    }
+
+    updateDashboardExpBoost(completedSets, result);
+    alert(`Training Complete! Checked off ${completedSets} sets. ${result.new_exp} EXP claimed toward Grade 3 Ascension.`);
+    resetRestTimer();
+    navigateView('dashboard-view');
+  } catch (error) {
+    console.error('[SHONENFIT] Workout completion network error:', error);
+    alert('Could not sync workout completion with the local backend. Make sure app.py is running on http://127.0.0.1:5000.');
+  }
+}
+
+function getActiveCharacterId() {
+  const selectedName = appState.selectedCharacter;
+  const characters = characterDatabase[appState.selectedUniverse] || [];
+  const activeCharacter = characters.find((character) => character.name === selectedName);
+
+  return activeCharacter?.id || selectedName || 'unassigned';
+}
+
+function updateDashboardExpBoost(completedSets, progressionData = {}) {
+  const statusPill = document.querySelector('#dashboard-view .status-pill');
+  const statusNotice = document.querySelector('#dashboard-view .status-notice');
+  const summaryBox = document.getElementById('summary-box');
+  let standingValue = document.getElementById('standing-value');
+  let expValue = document.getElementById('exp-value');
+  const currentGrade = progressionData.current_grade || 'Grade 4';
+  const totalExp = Number.isFinite(Number(progressionData.total_exp)) ? Number(progressionData.total_exp) : 250;
+  const newExp = Number.isFinite(Number(progressionData.new_exp)) ? Number(progressionData.new_exp) : 250;
+  const xpToNextLevel = Number.isFinite(Number(progressionData.xp_to_next_level))
+    ? Number(progressionData.xp_to_next_level)
+    : Math.max(0, 1000 - (totalExp % 1000));
+
+  if (statusPill) {
+    statusPill.textContent = `${currentGrade.toUpperCase()} - ${totalExp} EXP`;
+  }
+
+  if (statusNotice) {
+    statusNotice.textContent = `Training arc logged with ${completedSets} completed sets. ${newExp} EXP claimed. ${xpToNextLevel} EXP to next grade.`;
+  }
+
+  if (!standingValue && summaryBox) {
+    summaryBox.appendChild(createSummaryItem('Current Standing', 'standing-value', `${currentGrade} - ${totalExp} total EXP`));
+    standingValue = document.getElementById('standing-value');
+  }
+
+  if (standingValue) {
+    standingValue.textContent = `${currentGrade} - ${totalExp} total EXP`;
+  }
+
+  if (!expValue && summaryBox) {
+    summaryBox.appendChild(createSummaryItem('EXP Claimed', 'exp-value', `+${newExp} EXP / ${xpToNextLevel} to next grade`));
+    expValue = document.getElementById('exp-value');
+  }
+
+  if (expValue) {
+    expValue.textContent = `+${newExp} EXP / ${xpToNextLevel} to next grade`;
+  }
 }
 
 function formatTime(totalSeconds) {

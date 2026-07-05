@@ -121,5 +121,70 @@ def log_workout():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
 
+
+@app.route('/api/workout-complete', methods=['POST'])
+def complete_workout():
+    try:
+        data = request.get_json() or {}
+        character_id = data.get('character_id')
+        sets_completed = data.get('sets_completed')
+
+        if character_id is None or sets_completed is None:
+            return jsonify({
+                "status": "error",
+                "message": "character_id and sets_completed are required."
+            }), 400
+
+        conn = sqlite3.connect(DATABASE_FILE)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        user = cursor.execute(
+            'SELECT * FROM user_profiles ORDER BY id DESC LIMIT 1'
+        ).fetchone()
+
+        if not user:
+            conn.close()
+            return jsonify({
+                "status": "error",
+                "message": "User profile not found. Complete initialization first!"
+            }), 404
+
+        new_exp = 250
+        current_total_exp = int(user['total_exp'] or 0)
+        total_exp = current_total_exp + new_exp
+
+        grade_number = max(1, 4 - (total_exp // 1000))
+        current_grade = f"Grade {grade_number}"
+        xp_to_next_level = 1000 - (total_exp % 1000)
+        if xp_to_next_level == 1000:
+            xp_to_next_level = 0 if grade_number == 1 else 1000
+
+        cursor.execute('''
+            UPDATE user_profiles
+            SET total_exp = ?,
+                current_grade = ?
+            WHERE id = ?
+        ''', (
+            total_exp,
+            current_grade,
+            user['id']
+        ))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            "status": "success",
+            "new_exp": new_exp,
+            "total_exp": total_exp,
+            "current_grade": current_grade,
+            "xp_to_next_level": xp_to_next_level
+        }), 200
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000) 
