@@ -42,6 +42,8 @@ let timerRunning = false;
 let timerInterval = null;
 let timeRemaining = TIMER_TOTAL_SECONDS;
 let audioContext = null;
+let previousGrade = 'Grade 4';
+let pendingAscensionState = null;
 
 const characterDatabase = {
   jjk: [
@@ -77,6 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
   wireMetricsSubmission();
   wireWorkoutRouteButton();
   wireWorkoutControlButtons();
+  wireAscensionOverlayControls();
   ensureWorkoutRuntimeStyles();
   bindSetTrackingSelectors();
   initializeTimerDisplay();
@@ -272,13 +275,15 @@ async function submitMetricsProfile() {
     appState.selectedDirection = payload.strategyGoal;
 
     const didRenderDashboard = renderDashboardSummary(workoutData);
-    renderDashboardStreak(result);
     if (!didRenderDashboard) {
       console.error('[SHONENFIT] Dashboard render target was not available. View transition cancelled.');
       alert('Workout data was generated, but the dashboard container could not be found.');
       return;
     }
 
+    previousGrade = result.current_grade || result.initial_grade || previousGrade;
+    applyRankBadgeState(previousGrade);
+    renderDashboardStreak(result);
     MapsToView('dashboard-view');
   } catch (error) {
     console.error('[SHONENFIT] Profile response processing failed:', error);
@@ -1017,6 +1022,101 @@ function playTimerCompleteCue() {
   oscillator.stop(now + 0.45);
 }
 
+function playAscensionChime() {
+  unlockTimerAudioContext().then(() => {
+    const audioCtx = audioContext;
+    if (!audioCtx || audioCtx.state === 'suspended') {
+      return;
+    }
+
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    const now = audioCtx.currentTime;
+
+    oscillator.type = 'square';
+    oscillator.frequency.setValueAtTime(440, now);
+    oscillator.frequency.setValueAtTime(880, now + 0.15);
+    gainNode.gain.setValueAtTime(0.45, now);
+    gainNode.gain.setValueAtTime(0.45, now + 0.4);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.5);
+  });
+}
+
+function normalizeGradeClass(grade) {
+  const normalized = String(grade || 'Grade 4').toLowerCase().trim();
+  if (normalized.includes('special')) {
+    return 'special-grade';
+  }
+
+  const gradeMatch = normalized.match(/grade\s*(\d+)/);
+  return gradeMatch ? `grade-${gradeMatch[1]}` : 'grade-4';
+}
+
+function applyRankBadgeState(grade) {
+  const rankBadge = document.getElementById('rank-badge-display');
+  if (!rankBadge) {
+    return;
+  }
+
+  rankBadge.classList.remove('grade-4', 'grade-3', 'grade-2', 'grade-1', 'special-grade');
+  rankBadge.classList.add(normalizeGradeClass(grade));
+}
+
+function wireAscensionOverlayControls() {
+  const claimButton = document.getElementById('claim-new-power-btn');
+  const overlay = document.getElementById('ascension-celebrate-overlay');
+
+  if (!claimButton || !overlay) {
+    return;
+  }
+
+  claimButton.addEventListener('click', () => {
+    overlay.classList.add('hidden');
+
+    if (!pendingAscensionState) {
+      return;
+    }
+
+    const { completedSets, result } = pendingAscensionState;
+    previousGrade = result.current_grade;
+    updateDashboardExpBoost(completedSets, result);
+    renderDashboardStreak(result);
+    fetchWorkoutHistory();
+    resetRestTimer();
+    navigateView('dashboard-view');
+    pendingAscensionState = null;
+  });
+}
+
+function launchAscensionOverlay(newGrade, completedSets, result) {
+  const overlay = document.getElementById('ascension-celebrate-overlay');
+  const gradeEmblem = document.getElementById('ascension-grade-emblem');
+  const copy = document.querySelector('#ascension-celebrate-overlay .ascension-copy');
+
+  if (!overlay || !gradeEmblem) {
+    return false;
+  }
+
+  pendingAscensionState = { completedSets, result };
+  applyRankBadgeState(newGrade);
+
+  gradeEmblem.className = `ascension-grade-emblem ${normalizeGradeClass(newGrade)}`;
+  gradeEmblem.textContent = newGrade.toUpperCase();
+
+  if (copy) {
+    copy.textContent = `You have unlocked ${newGrade}. Claim your new power to return to the dashboard.`;
+  }
+
+  playAscensionChime();
+  overlay.classList.remove('hidden');
+  return true;
+}
+
 // ============================================================================
 // MISSION COMPLETION
 // ============================================================================
@@ -1024,6 +1124,7 @@ function playTimerCompleteCue() {
 async function completeWorkout(event) {
   event?.preventDefault();
   event?.stopPropagation();
+  await unlockTimerAudioContext();
 
   const setButtons = document.querySelectorAll('#exercise-cards-container .set-btn, #exercise-cards-container .set-button');
   const completedSets = Array.from(setButtons)
@@ -1056,10 +1157,17 @@ async function completeWorkout(event) {
       return;
     }
 
+    const newGrade = result.current_grade || previousGrade;
+
+    if (newGrade !== previousGrade && launchAscensionOverlay(newGrade, completedSets, result)) {
+      return;
+    }
+
     updateDashboardExpBoost(completedSets, result);
     renderDashboardStreak(result);
     await fetchWorkoutHistory();
     alert(`Training Complete! Checked off ${completedSets}/${totalSets} sets. ${result.new_exp} EXP claimed toward Grade 3 Ascension.`);
+    previousGrade = newGrade;
     resetRestTimer();
     navigateView('dashboard-view');
   } catch (error) {
@@ -1092,6 +1200,8 @@ function updateDashboardExpBoost(completedSets, progressionData = {}) {
   if (statusPill) {
     statusPill.textContent = `${currentGrade.toUpperCase()} - ${totalExp} EXP`;
   }
+
+  applyRankBadgeState(currentGrade);
 
   if (statusNotice) {
     statusNotice.textContent = `Training arc logged with ${completedSets} completed sets. ${newExp} EXP claimed. ${xpToNextLevel} EXP to next grade.`;

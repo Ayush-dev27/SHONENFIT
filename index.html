@@ -192,7 +192,7 @@
         <h2 class="section-title">WELCOME TO THE RANKS</h2>
 
         <div class="status-section">
-          <div class="status-pill">GRADE 4</div>
+          <div id="rank-badge-display" class="status-pill rank-badge-display grade-4"></div>
           <p class="status-notice">
             Ascend through consistent training. Reach Grade 3 when you complete 12 weeks of your custom program.
           </p>
@@ -264,6 +264,24 @@
       </div>
     </div>
   </section>
+
+  <div id="ascension-celebrate-overlay" class="ascension-celebrate-overlay hidden">
+    <div class="ascension-particle-field" aria-hidden="true">
+      <span></span>
+      <span></span>
+      <span></span>
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+    <div class="ascension-panel" role="dialog" aria-modal="true" aria-labelledby="ascension-title">
+      <p class="ascension-kicker">Training Arc Breakthrough</p>
+      <h2 id="ascension-title" class="ascension-title">RANK ASCENDED</h2>
+      <div id="ascension-grade-emblem" class="ascension-grade-emblem grade-3">GRADE 3</div>
+      <p class="ascension-copy">Your discipline has unlocked a higher combat tier.</p>
+      <button type="button" id="claim-new-power-btn" class="btn btn-accent ascension-claim-btn">CLAIM NEW POWER</button>
+    </div>
+  </div>
 
   <script src="script.js"></script>
 </body>
