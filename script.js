@@ -792,8 +792,8 @@ function wireWorkoutControlButtons() {
   }
 }
 
-function toggleRestTimer() {
-  prepareAudioContext();
+async function toggleRestTimer() {
+  await unlockTimerAudioContext();
 
   if (timeRemaining <= 0) {
     timeRemaining = TIMER_TOTAL_SECONDS;
@@ -818,6 +818,18 @@ function toggleRestTimer() {
       playTimerCompleteCue();
     }
   }, 1000);
+}
+
+async function unlockTimerAudioContext() {
+  const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+
+  if (!audioContext && AudioContextConstructor) {
+    audioContext = new AudioContextConstructor();
+  }
+
+  if (audioContext?.state === 'suspended') {
+    await audioContext.resume();
+  }
 }
 
 function pauseRestTimer() {
@@ -895,28 +907,31 @@ function prepareAudioContext() {
 }
 
 function playTimerCompleteCue() {
-  if (!audioContext) {
+  const audioCtx = audioContext;
+
+  if (!audioCtx) {
     return;
   }
 
-  if (audioContext.state === 'suspended') {
-    audioContext.resume();
+  if (audioCtx.state === 'suspended') {
+    console.warn('[SHONENFIT] Timer audio context is suspended; beep skipped until the next user-initiated timer start.');
+    return;
   }
 
-  const oscillator = audioContext.createOscillator();
-  const gain = audioContext.createGain();
-  const now = audioContext.currentTime;
+  const oscillator = audioCtx.createOscillator();
+  const gainNode = audioCtx.createGain();
+  const now = audioCtx.currentTime;
 
-  oscillator.type = 'sine';
-  oscillator.frequency.setValueAtTime(660, now);
-  oscillator.frequency.setValueAtTime(880, now + 0.16);
+  oscillator.type = 'square';
+  oscillator.frequency.setValueAtTime(440, now);
+  oscillator.frequency.setValueAtTime(880, now + 0.15);
 
-  gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(0.22, now + 0.02);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+  gainNode.gain.setValueAtTime(0.3, now);
+  gainNode.gain.setValueAtTime(0.3, now + 0.4);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.45);
 
-  oscillator.connect(gain);
-  gain.connect(audioContext.destination);
+  oscillator.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
   oscillator.start(now);
   oscillator.stop(now + 0.45);
 }
@@ -932,6 +947,12 @@ async function completeWorkout(event) {
   const completedSets = document.querySelectorAll(
     '#exercise-cards-container .set-btn.active, #exercise-cards-container .set-button.active, #exercise-cards-container .set-btn.completed, #exercise-cards-container .set-button.completed',
   ).length;
+
+  if (completedSets === 0) {
+    alert('Focus, Hero! Log at least one completed set before claiming your EXP.');
+    return;
+  }
+
   const payload = {
     character_id: getActiveCharacterId(),
     sets_completed: completedSets,
