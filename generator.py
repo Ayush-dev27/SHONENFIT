@@ -1,4 +1,5 @@
 from datetime import datetime
+import re
 
 
 TRACK_FOCUS = {
@@ -172,48 +173,232 @@ def resolve_character_key(profile_data):
     return character_aliases.get(first_token, "toji")
 
 
-def build_routine_items(exercises, strategy, weight, height, medical_history):
+STRUCTURAL_REPLACEMENTS = {
+    "bench": "Incline Dumbbell Bench Press",
+    "press": "Machine Chest Press",
+    "pull": "Lat Pulldowns (Adjustable Load)",
+    "row": "Chest-Supported Cable Rows",
+    "squat": "Leg Presses",
+    "deadlift": "Hip Thrusts",
+    "lunge": "Step-Ups",
+    "jump": "Low-Impact Step-Ups",
+    "sled": "Incline Treadmill March",
+    "curl": "Cable Hammer Curls",
+    "carry": "Suitcase Carries",
+    "core": "Dead Bug Core Holds",
+}
+
+MUSCLE_FINISHERS = {
+    "arms": "Barbell Spider Curls super-setted with Tricep Pushdowns",
+    "chest": "Cable Flyes super-setted with Machine Chest Press",
+    "legs": "Leg Extensions super-setted with Seated Hamstring Curls",
+    "back": "Straight-Arm Pulldowns super-setted with Chest-Supported Rows",
+    "shoulders": "Cable Lateral Raises super-setted with Rear Delt Flyes",
+}
+
+COMPOUND_KEYWORDS = [
+    "squat", "deadlift", "pull-up", "pull-ups", "bench", "press", "row", "clean",
+    "sled", "lunge", "carry", "carries", "thruster", "dip", "dips",
+]
+
+AXIAL_LOADING_KEYWORDS = [
+    "barbell back squat", "front squat", "squat", "deadlift", "power clean",
+    "heavy log clean", "rack pull", "overhead press", "sled", "jump", "bound",
+]
+
+
+def parse_float(value, fallback):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def parse_int(value, fallback):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def is_compound_exercise(exercise):
+    lower_name = exercise.lower()
+    return any(keyword in lower_name for keyword in COMPOUND_KEYWORDS)
+
+
+def find_structural_replacement(exercise):
+    lower_name = exercise.lower()
+    for keyword, replacement in STRUCTURAL_REPLACEMENTS.items():
+        if keyword in lower_name:
+            return replacement
+    return "Cable Machine Pattern Replacement"
+
+
+def replace_heavy_bodyweight_movements(exercises, weight):
+    if weight <= 90:
+        return list(exercises)
+
+    guarded_exercises = []
+    for exercise in exercises:
+        lower_name = exercise.lower()
+        if "weighted pull-up" in lower_name or "weighted pull-ups" in lower_name:
+            guarded_exercises.append("Lat Pulldowns (Adjustable Load)")
+        elif "heavy pull-up" in lower_name or "pull-ups" in lower_name:
+            guarded_exercises.append("Assisted Banded Pull-Ups")
+        else:
+            guarded_exercises.append(exercise)
+    return guarded_exercises
+
+
+def extract_preference_phrases(workout_preferences):
+    preference_text = workout_preferences.lower()
+    exclusions = []
+    inclusions = []
+
+    exclusion_patterns = [
+        r"\bno\s+([a-z0-9 \-/]+)",
+        r"\bremove\s+([a-z0-9 \-/]+)",
+        r"\bdon't want\s+([a-z0-9 \-/]+)",
+        r"\bwithout\s+([a-z0-9 \-/]+)",
+    ]
+    inclusion_patterns = [
+        r"\binclude\s+([a-z0-9 \-/]+)",
+        r"\badd\s+([a-z0-9 \-/]+)",
+        r"\bwant\s+([a-z0-9 \-/]+)",
+    ]
+
+    for pattern in exclusion_patterns:
+        exclusions.extend(match.strip() for match in re.findall(pattern, preference_text))
+
+    for pattern in inclusion_patterns:
+        inclusions.extend(match.strip() for match in re.findall(pattern, preference_text))
+
+    return exclusions, inclusions
+
+
+def phrase_matches_exercise(phrase, exercise):
+    phrase_tokens = [token for token in re.split(r"[^a-z0-9]+", phrase.lower()) if len(token) > 2]
+    exercise_lower = exercise.lower()
+    return bool(phrase_tokens) and any(token in exercise_lower for token in phrase_tokens)
+
+
+def clean_preferred_exercise_name(phrase):
+    cleaned = re.split(r"\b(?:and|but|with|for|please|thanks)\b", phrase, maxsplit=1)[0]
+    cleaned = re.sub(r"[^a-z0-9 \-/]", "", cleaned).strip()
+    return cleaned.title() if cleaned else ""
+
+
+def apply_preference_rules(exercises, workout_preferences):
+    exclusions, inclusions = extract_preference_phrases(workout_preferences)
+    adjusted_exercises = []
+
+    for exercise in exercises:
+        if any(phrase_matches_exercise(phrase, exercise) for phrase in exclusions):
+            adjusted_exercises.append(find_structural_replacement(exercise))
+        else:
+            adjusted_exercises.append(exercise)
+
+    for inclusion in inclusions:
+        preferred_exercise = clean_preferred_exercise_name(inclusion)
+        if not preferred_exercise:
+            continue
+
+        replaced = False
+        for index, exercise in enumerate(adjusted_exercises):
+            if (
+                any(keyword in preferred_exercise.lower() for keyword in ["bench", "press", "chest"])
+                and any(keyword in exercise.lower() for keyword in ["press", "push", "bench", "fly"])
+            ):
+                adjusted_exercises[index] = preferred_exercise
+                replaced = True
+                break
+            if (
+                any(keyword in preferred_exercise.lower() for keyword in ["row", "pull", "pulldown", "back"])
+                and any(keyword in exercise.lower() for keyword in ["row", "pull", "pulldown"])
+            ):
+                adjusted_exercises[index] = preferred_exercise
+                replaced = True
+                break
+            if (
+                any(keyword in preferred_exercise.lower() for keyword in ["squat", "leg", "lunge"])
+                and any(keyword in exercise.lower() for keyword in ["squat", "leg", "lunge", "step"])
+            ):
+                adjusted_exercises[index] = preferred_exercise
+                replaced = True
+                break
+
+        if not replaced:
+            adjusted_exercises.append(preferred_exercise)
+
+    return adjusted_exercises
+
+
+def find_muscle_focus_finishers(workout_preferences):
+    preference_text = workout_preferences.lower()
+    finishers = []
+
+    for keyword, finisher in MUSCLE_FINISHERS.items():
+        if keyword in preference_text:
+            finishers.append(finisher)
+
+    return finishers
+
+
+def apply_medical_safety(exercise, medical_conditions):
+    lower_name = exercise.lower()
+    medical_text = medical_conditions.lower()
+    injury_keywords = ["knee", "back", "injury", "spine", "acl", "meniscus", "herniated", "slip disc"]
+
+    if not any(keyword in medical_text for keyword in injury_keywords):
+        return exercise, False
+
+    if any(keyword in lower_name for keyword in AXIAL_LOADING_KEYWORDS):
+        if any(keyword in medical_text for keyword in ["knee", "acl", "meniscus"]):
+            return "Leg Presses (Injury Modification Applied)", True
+        if any(keyword in medical_text for keyword in ["back", "spine", "herniated", "slip disc", "injury"]):
+            return "Box Squats (Injury Modification Applied)", True
+
+    return exercise, False
+
+
+def build_routine_items(exercises, strategy, age, weight, height, medical_conditions, workout_preferences):
     calculated_routines = []
 
     for exercise in exercises:
+        safe_exercise, injury_modified = apply_medical_safety(exercise, medical_conditions)
+
         if strategy == "physique":
             sets = 4 if weight >= 75 else 3
             reps = "8 to 12 reps"
             intensity = "Focus on a 3-second negative eccentric tempo for maximal mechanical hypertrophy damage."
         else:
             sets = 5 if height >= 180 else 4
-            reps = "5 explosive reps" if any(keyword in exercise.lower() for keyword in ["deadlift", "clean", "pull"]) else "45 seconds max effort"
+            reps = "5 explosive reps" if any(keyword in safe_exercise.lower() for keyword in ["deadlift", "clean", "pull"]) else "45 seconds max effort"
             intensity = "Execute with maximal concentric velocity. Rest fully between sets to prevent neural fatigue."
 
+        if age > 40 and is_compound_exercise(safe_exercise):
+            sets = 3
+            intensity += " Recovery Tip: Volume reduced for structural recovery and joint resilience."
+
+        if injury_modified:
+            intensity += " Injury Modification Applied."
+
         calculated_routines.append({
-            "name": exercise,
+            "name": safe_exercise,
             "sets": sets,
             "reps": reps,
             "coaching_cue": intensity,
         })
 
-    final_filtered_routines = []
-    knee_injury_keywords = ["knee", "acl", "meniscus", "patella"]
-    back_injury_keywords = ["back", "spine", "lumbar", "lumber", "herniated", "slip disc"]
+    for finisher in find_muscle_focus_finishers(workout_preferences):
+        calculated_routines.append({
+            "name": finisher,
+            "sets": 3,
+            "reps": "12 reps",
+            "coaching_cue": "Preference Finisher: Added to match your requested muscle-group focus.",
+        })
 
-    for item in calculated_routines:
-        ex_name = item["name"]
-
-        if any(keyword in medical_history for keyword in knee_injury_keywords):
-            if any(unsafe in ex_name.lower() for unsafe in ["squat", "box jump", "depth jump", "sled", "lunge", "bound"]):
-                item["name"] = "Isolated Leg Extensions (Slow Tempo)"
-                item["reps"] = "15 controlled reps"
-                item["coaching_cue"] = "SAFETY ALTERNATIVE: Replaced explosive lower body knee flexion with an open-chain static isolation to protect your joint injury configuration."
-
-        if any(keyword in medical_history for keyword in back_injury_keywords):
-            if any(unsafe in ex_name.lower() for unsafe in ["deadlift", "squat", "row", "clean", "pull"]):
-                item["name"] = "Chest-Supported Dumbbell Rows or Glute Bridges"
-                item["reps"] = "12 to 15 reps"
-                item["coaching_cue"] = "SAFETY ALTERNATIVE: Compounding load removed from the lumbar spine column. Axial skeleton loading avoided to shield your lower back injury."
-
-        final_filtered_routines.append(item)
-
-    return final_filtered_routines
+    return calculated_routines
 
 
 def generate_custom_routine(profile_data):
@@ -226,23 +411,37 @@ def generate_custom_routine(profile_data):
     if strategy not in ("physique", "train-like"):
         strategy = "physique"
 
-    weight = float(profile_data.get("weight", 70))
-    height = float(profile_data.get("height", 175))
-    medical_history = profile_data.get("medicalHistory", "").lower()
+    age = parse_int(profile_data.get("age"), 25)
+    weight = parse_float(profile_data.get("weight"), 70)
+    height = parse_float(profile_data.get("height"), 175)
+    medical_conditions = (
+        profile_data.get("medical_conditions")
+        or profile_data.get("medicalHistory")
+        or ""
+    )
+    workout_preferences = (
+        profile_data.get("workout_preferences")
+        or profile_data.get("specialPreferences")
+        or ""
+    )
 
     current_day = datetime.now().weekday()
     track_key = TRACK_BY_WEEKDAY.get(current_day, "recovery")
     selected_template = CHARACTER_TEMPLATES.get(char_key, CHARACTER_TEMPLATES["toji"])[strategy]
-    exercises = selected_template[track_key]
+    exercises = replace_heavy_bodyweight_movements(selected_template[track_key], weight)
+    exercises = apply_preference_rules(exercises, workout_preferences)
 
     final_filtered_routines = build_routine_items(
-        exercises, strategy, weight, height, medical_history
+        exercises, strategy, age, weight, height, medical_conditions, workout_preferences
     )
+    focus_directive = TRACK_FOCUS[track_key]
+    if age > 40:
+        focus_directive += " | Recovery Tip: reduced compound volume for structural recovery."
 
     return {
         "character_alignment": char_key.upper(),
         "strategy_paradigm": strategy.upper(),
-        "core_focus_directive": TRACK_FOCUS[track_key],
+        "core_focus_directive": focus_directive,
         "daily_track": track_key,
         "weekday_index": current_day,
         "assigned_workout_routine": final_filtered_routines,
