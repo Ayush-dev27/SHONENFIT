@@ -42,6 +42,48 @@ def ensure_database_tables():
 
 ensure_database_tables()
 
+def calculate_streak(user_id=1):
+    ensure_database_tables()
+
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    rows = cursor.execute('''
+        SELECT DISTINCT DATE(timestamp) AS training_date
+        FROM workout_history
+        ORDER BY training_date DESC
+    ''').fetchall()
+    conn.close()
+
+    if not rows:
+        return 0
+
+    training_dates = [
+        datetime.strptime(row[0], '%Y-%m-%d').date()
+        for row in rows
+        if row[0]
+    ]
+
+    if not training_dates:
+        return 0
+
+    today = datetime.now().date()
+    most_recent = training_dates[0]
+
+    if (today - most_recent).days > 2:
+        return 0
+
+    streak_count = 1
+    previous_date = most_recent
+
+    for training_date in training_dates[1:]:
+        if (previous_date - training_date).days <= 2:
+            streak_count += 1
+            previous_date = training_date
+        else:
+            break
+
+    return streak_count
+
 @app.route('/api/profile', methods=['POST'])
 def create_profile():
     try:
@@ -79,6 +121,7 @@ def create_profile():
             "status": "success",
             "message": "Profile synced to database and custom pipeline initialized!",
             "initial_grade": "Grade 4",
+            "current_streak": calculate_streak(),
             "workout_data": routine_payload
         }), 201
 
@@ -220,12 +263,15 @@ def complete_workout():
         conn.commit()
         conn.close()
 
+        current_streak = calculate_streak(user['id'])
+
         return jsonify({
             "status": "success",
             "new_exp": new_exp,
             "total_exp": total_exp,
             "current_grade": current_grade,
-            "xp_to_next_level": xp_to_next_level
+            "xp_to_next_level": xp_to_next_level,
+            "current_streak": current_streak
         }), 200
 
     except Exception as e:

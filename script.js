@@ -272,6 +272,7 @@ async function submitMetricsProfile() {
     appState.selectedDirection = payload.strategyGoal;
 
     const didRenderDashboard = renderDashboardSummary(workoutData);
+    renderDashboardStreak(result);
     if (!didRenderDashboard) {
       console.error('[SHONENFIT] Dashboard render target was not available. View transition cancelled.');
       alert('Workout data was generated, but the dashboard container could not be found.');
@@ -461,6 +462,44 @@ function createSummaryItem(label, valueId, value) {
 
   item.append(labelElement, valueElement);
   return item;
+}
+
+function renderDashboardStreak(data = {}) {
+  const dashboardCard = document.querySelector('#dashboard-view .dashboard-card');
+  if (!dashboardCard) {
+    return;
+  }
+
+  let streakDisplay = document.getElementById('dashboard-streak-display');
+  if (!streakDisplay) {
+    streakDisplay = document.createElement('div');
+    streakDisplay.id = 'dashboard-streak-display';
+
+    const summaryBox = document.getElementById('summary-box');
+    if (summaryBox) {
+      dashboardCard.insertBefore(streakDisplay, summaryBox);
+    } else {
+      dashboardCard.appendChild(streakDisplay);
+    }
+  }
+
+  const currentStreak = Number(data.current_streak || 0);
+
+  if (currentStreak > 0) {
+    streakDisplay.innerHTML = `
+      <div class="streak-badge-card">
+        <span class="streak-fire-icon">&#128293;</span>
+        <span class="streak-count-text">${currentStreak}-Day Active Training Arc</span>
+      </div>
+    `;
+    return;
+  }
+
+  streakDisplay.innerHTML = `
+    <div class="streak-badge-card streak-badge-card--empty">
+      <span class="streak-count-text">Begin a new training arc today to ignite your streak!</span>
+    </div>
+  `;
 }
 
 async function fetchWorkoutHistory() {
@@ -756,6 +795,42 @@ function ensureWorkoutRuntimeStyles() {
       line-height: 1.55;
       margin: 0;
     }
+
+    #dashboard-streak-display {
+      margin: 1.5rem 0 2rem;
+    }
+
+    .streak-badge-card {
+      align-items: center;
+      background: linear-gradient(135deg, rgba(255, 42, 81, 0.18), rgba(18, 20, 28, 0.92));
+      border: 1px solid rgba(255, 42, 81, 0.48);
+      border-radius: 8px;
+      box-shadow: 0 0 24px rgba(255, 42, 81, 0.18);
+      color: var(--text-primary);
+      display: flex;
+      gap: 0.85rem;
+      justify-content: center;
+      padding: 1rem 1.25rem;
+      text-align: center;
+    }
+
+    .streak-badge-card--empty {
+      background: rgba(18, 20, 28, 0.72);
+      border-color: var(--border-color);
+      box-shadow: none;
+    }
+
+    .streak-fire-icon {
+      font-size: 1.35rem;
+      line-height: 1;
+    }
+
+    .streak-count-text {
+      font-size: 0.95rem;
+      font-weight: 800;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -975,6 +1050,7 @@ async function completeWorkout(event) {
     }
 
     updateDashboardExpBoost(completedSets, result);
+    renderDashboardStreak(result);
     await fetchWorkoutHistory();
     alert(`Training Complete! Checked off ${completedSets} sets. ${result.new_exp} EXP claimed toward Grade 3 Ascension.`);
     resetRestTimer();
