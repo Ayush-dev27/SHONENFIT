@@ -226,6 +226,20 @@ def complete_workout():
                 "message": "User profile not found. Complete initialization first!"
             }), 404
 
+        workout_logged_today = cursor.execute('''
+            SELECT id
+            FROM workout_history
+            WHERE date(timestamp) = date('now', 'localtime')
+            LIMIT 1
+        ''').fetchone()
+
+        if workout_logged_today:
+            conn.close()
+            return jsonify({
+                "status": "error",
+                "message": "Daily training cap reached! Rest and recovery are mandatory parts of a Shonen training arc."
+            }), 400
+
         new_exp = 250
         current_total_exp = int(user['total_exp'] or 0)
         total_exp = current_total_exp + new_exp

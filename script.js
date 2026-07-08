@@ -1153,6 +1153,11 @@ async function completeWorkout(event) {
 
     if (!response.ok || result?.status !== 'success') {
       console.error('[SHONENFIT] Workout completion sync failed:', result);
+      if (response.status === 400) {
+        showDailyTrainingCapWarning(result?.message);
+        return;
+      }
+
       alert(`Workout completion failed: ${result?.message || `HTTP ${response.status}`}`);
       return;
     }
@@ -1174,6 +1179,51 @@ async function completeWorkout(event) {
     console.error('[SHONENFIT] Workout completion network error:', error);
     alert('Could not sync workout completion with the local backend. Make sure app.py is running on http://127.0.0.1:5000.');
   }
+}
+
+function showDailyTrainingCapWarning(message) {
+  const warningMessage = message || 'Daily training cap reached! Rest and recovery are mandatory parts of a Shonen training arc.';
+  let warningCard = document.getElementById('daily-training-cap-warning');
+
+  if (!warningCard) {
+    warningCard = document.createElement('div');
+    warningCard.id = 'daily-training-cap-warning';
+    warningCard.setAttribute('role', 'alert');
+    warningCard.style.cssText = `
+      position: fixed;
+      left: 50%;
+      bottom: 2rem;
+      z-index: 10000;
+      width: min(92vw, 520px);
+      padding: 1rem 1.25rem;
+      border: 1px solid rgba(255, 59, 92, 0.72);
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(18, 20, 30, 0.96), rgba(70, 10, 22, 0.94));
+      box-shadow: 0 0 32px rgba(255, 34, 72, 0.32), inset 0 0 24px rgba(255, 255, 255, 0.04);
+      color: #fff;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      line-height: 1.45;
+      text-align: center;
+      transform: translate(-50%, 130%);
+      opacity: 0;
+      transition: transform 0.28s ease, opacity 0.28s ease;
+    `;
+    document.body.appendChild(warningCard);
+  }
+
+  warningCard.innerHTML = `
+    <span style="display:block; color:#ff4668; font-size:0.82rem; margin-bottom:0.35rem; text-transform:uppercase;">Recovery Lock Active</span>
+    <span>${warningMessage}</span>
+  `;
+  window.requestAnimationFrame(() => {
+    warningCard.style.transform = 'translate(-50%, 0)';
+    warningCard.style.opacity = '1';
+  });
+  window.setTimeout(() => {
+    warningCard.style.transform = 'translate(-50%, 130%)';
+    warningCard.style.opacity = '0';
+  }, 5200);
 }
 
 function getActiveCharacterId() {
