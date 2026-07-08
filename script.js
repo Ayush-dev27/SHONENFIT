@@ -677,8 +677,9 @@ function populateWorkoutExercises() {
 
     const setButtons = document.createElement('div');
     setButtons.className = 'set-buttons';
+    const setCount = getExerciseSetCount(exercise);
 
-    for (let setIndex = 1; setIndex <= 4; setIndex += 1) {
+    for (let setIndex = 1; setIndex <= setCount; setIndex += 1) {
       const setButton = document.createElement('button');
       setButton.type = 'button';
       setButton.className = 'set-button set-btn';
@@ -700,6 +701,11 @@ function getAssignedWorkoutRoutine(workoutData = appState.latestWorkoutData) {
   return Array.isArray(workoutData?.assigned_workout_routine)
     ? workoutData.assigned_workout_routine
     : [];
+}
+
+function getExerciseSetCount(exercise) {
+  const parsedSets = Number.parseInt(exercise?.sets, 10);
+  return Number.isFinite(parsedSets) && parsedSets > 0 ? parsedSets : 4;
 }
 
 function toggleSet(button) {
@@ -1019,9 +1025,10 @@ async function completeWorkout(event) {
   event?.preventDefault();
   event?.stopPropagation();
 
-  const completedSets = document.querySelectorAll(
-    '#exercise-cards-container .set-btn.active, #exercise-cards-container .set-button.active, #exercise-cards-container .set-btn.completed, #exercise-cards-container .set-button.completed',
-  ).length;
+  const setButtons = document.querySelectorAll('#exercise-cards-container .set-btn, #exercise-cards-container .set-button');
+  const completedSets = Array.from(setButtons)
+    .filter((button) => button.classList.contains('active') || button.classList.contains('completed')).length;
+  const totalSets = setButtons.length;
 
   if (completedSets === 0) {
     alert('Focus, Hero! Log at least one completed set before claiming your EXP.');
@@ -1052,7 +1059,7 @@ async function completeWorkout(event) {
     updateDashboardExpBoost(completedSets, result);
     renderDashboardStreak(result);
     await fetchWorkoutHistory();
-    alert(`Training Complete! Checked off ${completedSets} sets. ${result.new_exp} EXP claimed toward Grade 3 Ascension.`);
+    alert(`Training Complete! Checked off ${completedSets}/${totalSets} sets. ${result.new_exp} EXP claimed toward Grade 3 Ascension.`);
     resetRestTimer();
     navigateView('dashboard-view');
   } catch (error) {
