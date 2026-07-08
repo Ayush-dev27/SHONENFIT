@@ -79,6 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
   wireMetricsSubmission();
   wireWorkoutRouteButton();
   wireWorkoutControlButtons();
+  wireHonestyGateControls();
   wireAscensionOverlayControls();
   ensureWorkoutRuntimeStyles();
   bindSetTrackingSelectors();
@@ -1121,7 +1122,112 @@ function launchAscensionOverlay(newGrade, completedSets, result) {
 // MISSION COMPLETION
 // ============================================================================
 
-async function completeWorkout(event) {
+function completeWorkout(event) {
+  event?.preventDefault();
+  event?.stopPropagation();
+  showHonestyGate();
+}
+
+function wireHonestyGateControls() {
+  const yesButton = document.getElementById('honesty-yes-btn');
+  const noButton = document.getElementById('honesty-no-btn');
+
+  if (yesButton) {
+    yesButton.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      hideHonestyGate();
+      await submitWorkoutCompletion(event);
+    });
+  }
+
+  if (noButton) {
+    noButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      hideHonestyGate();
+      showRestDayMotivationBanner();
+    });
+  }
+}
+
+function showHonestyGate() {
+  const modal = document.getElementById('honesty-gate-modal');
+  const quoteSlot = document.getElementById('honesty-character-quote');
+
+  if (!modal) {
+    submitWorkoutCompletion();
+    return;
+  }
+
+  if (quoteSlot) {
+    quoteSlot.textContent = getHonestyGateQuote();
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function hideHonestyGate() {
+  const modal = document.getElementById('honesty-gate-modal');
+  modal?.classList.add('hidden');
+}
+
+function getHonestyGateQuote() {
+  const characterId = getActiveCharacterId().toLowerCase();
+  const quoteMap = {
+    toji: "Are you cutting corners? The human body doesn't lie. Did you earn this?",
+    inosuke: "DON'T SLACK OFF! Pig rush requires raw sweat! Did you fight hard today?!",
+    tengen: "Falsifying records isn't flamboyant at all. Speak the truth, did you complete the set?",
+  };
+
+  return quoteMap[characterId] || 'A true warrior records only earned victories. Did you complete the work?';
+}
+
+function showRestDayMotivationBanner() {
+  let banner = document.getElementById('rest-day-motivation-banner');
+
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'rest-day-motivation-banner';
+    banner.setAttribute('role', 'status');
+    banner.style.cssText = `
+      position: fixed;
+      left: 50%;
+      bottom: 2rem;
+      z-index: 10000;
+      width: min(92vw, 560px);
+      padding: 1rem 1.25rem;
+      border: 1px solid rgba(94, 234, 212, 0.58);
+      border-radius: 20px;
+      background: linear-gradient(135deg, rgba(10, 18, 30, 0.96), rgba(15, 43, 54, 0.94));
+      box-shadow: 0 0 34px rgba(45, 212, 191, 0.24), inset 0 0 24px rgba(255, 255, 255, 0.04);
+      color: #ecfeff;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      line-height: 1.5;
+      text-align: center;
+      transform: translate(-50%, 130%);
+      opacity: 0;
+      transition: transform 0.28s ease, opacity 0.28s ease;
+    `;
+    document.body.appendChild(banner);
+  }
+
+  banner.innerHTML = `
+    <span style="display:block; color:#5eead4; font-size:0.82rem; margin-bottom:0.35rem; text-transform:uppercase;">Rest Day Logged Honestly</span>
+    <span>Acknowledging a rest day takes real strength. Fall down seven times, stand up eight. Your training arc resumes tomorrow!</span>
+  `;
+  window.requestAnimationFrame(() => {
+    banner.style.transform = 'translate(-50%, 0)';
+    banner.style.opacity = '1';
+  });
+  window.setTimeout(() => {
+    banner.style.transform = 'translate(-50%, 130%)';
+    banner.style.opacity = '0';
+  }, 6500);
+}
+
+async function submitWorkoutCompletion(event) {
   event?.preventDefault();
   event?.stopPropagation();
   await unlockTimerAudioContext();

@@ -5,6 +5,101 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SHONENFIT - Become Your Hero</title>
   <link rel="stylesheet" href="style.css">
+  <style>
+    #honesty-gate-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 9998;
+      display: grid;
+      place-items: center;
+      padding: 1.5rem;
+      background:
+        radial-gradient(circle at 50% 20%, rgba(255, 38, 72, 0.18), transparent 34rem),
+        rgba(5, 7, 12, 0.86);
+      backdrop-filter: blur(10px);
+    }
+
+    #honesty-gate-modal.hidden {
+      display: none;
+    }
+
+    .honesty-gate-card {
+      width: min(94vw, 620px);
+      padding: clamp(1.5rem, 4vw, 2.5rem);
+      border: 1px solid rgba(255, 48, 82, 0.72);
+      border-radius: 28px;
+      background:
+        linear-gradient(145deg, rgba(18, 22, 34, 0.98), rgba(9, 11, 18, 0.98)),
+        radial-gradient(circle at top, rgba(255, 41, 78, 0.22), transparent 55%);
+      box-shadow:
+        0 0 42px rgba(255, 35, 75, 0.34),
+        inset 0 0 28px rgba(255, 255, 255, 0.035);
+      color: #f8fafc;
+      text-align: center;
+    }
+
+    .honesty-kicker {
+      margin: 0 0 0.65rem;
+      color: #ff3b62;
+      font-size: 0.78rem;
+      font-weight: 900;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+    }
+
+    #honesty-character-quote {
+      margin: 0 0 1rem;
+      color: #ffffff;
+      font-size: clamp(1.35rem, 4vw, 2rem);
+      line-height: 1.15;
+      text-shadow: 0 0 18px rgba(255, 49, 89, 0.56);
+    }
+
+    .honesty-question {
+      margin: 0 auto 1.6rem;
+      max-width: 48ch;
+      color: #cbd5e1;
+      font-size: 1rem;
+      line-height: 1.65;
+    }
+
+    .honesty-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.85rem;
+    }
+
+    .honesty-actions button {
+      min-width: 190px;
+      padding: 0.9rem 1.2rem;
+      border: 0;
+      border-radius: 999px;
+      cursor: pointer;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+    }
+
+    .honesty-actions button:hover {
+      transform: translateY(-2px);
+      filter: brightness(1.08);
+    }
+
+    .btn-confirm {
+      color: #fff;
+      background: linear-gradient(135deg, #16a34a, #ef233c);
+      box-shadow: 0 0 24px rgba(22, 163, 74, 0.34), 0 0 28px rgba(239, 35, 60, 0.26);
+    }
+
+    .btn-cancel {
+      color: #dbe4ef;
+      background: linear-gradient(135deg, #273142, #111827);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.035);
+    }
+  </style>
 </head>
 <body>
 
@@ -264,6 +359,20 @@
       </div>
     </div>
   </section>
+
+  <div id="honesty-gate-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="honesty-character-quote">
+    <div class="honesty-gate-card">
+      <p class="honesty-kicker">Honesty Gate</p>
+      <h3 id="honesty-character-quote">A true warrior records only earned victories.</h3>
+      <p class="honesty-question">
+        Did you actually execute your training arc today, or are you cheating your own progression?
+      </p>
+      <div class="honesty-actions">
+        <button type="button" id="honesty-yes-btn" class="btn-confirm">I Put In The Work</button>
+        <button type="button" id="honesty-no-btn" class="btn-cancel">I Missed Today</button>
+      </div>
+    </div>
+  </div>
 
   <div id="ascension-celebrate-overlay" class="ascension-celebrate-overlay hidden">
     <div class="ascension-particle-field" aria-hidden="true">
