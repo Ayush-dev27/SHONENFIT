@@ -206,6 +206,49 @@ AXIAL_LOADING_KEYWORDS = [
     "heavy log clean", "rack pull", "overhead press", "sled", "jump", "bound",
 ]
 
+DYNAMIC_CUE_RULES = [
+    (
+        ["slam", "slams", "sledgehammer", "battle rope", "rope", "sprint", "burpee", "shuttle", "assault bike"],
+        "Attack each rep explosively, then reset your breathing before fatigue turns power into sloppy motion.",
+    ),
+    (
+        ["curl", "curls", "extension", "pushdown", "tricep", "bicep", "forearm"],
+        "Lock the elbows in place, squeeze the target muscle hard, and avoid swinging momentum through the rep.",
+    ),
+    (
+        ["carry", "carries", "walk", "farmer", "suitcase", "sandbag", "sled"],
+        "Brace the ribs down, keep posture tall, and move with controlled steps so the core—not momentum—owns the load.",
+    ),
+    (
+        ["squat", "squats", "lunge", "lunges", "step-up", "step ups", "split squat", "leg press"],
+        "Root your feet into the floor, track knees over toes, and keep tension through the hips on every rep.",
+    ),
+    (
+        ["press", "push-up", "push ups", "push-ups", "dip", "dips", "bench", "thruster"],
+        "Stack wrists over elbows, brace before pressing, and drive the weight with a powerful but controlled lockout.",
+    ),
+    (
+        ["row", "rows", "pull-up", "pull-ups", "pulldown", "pull", "face pull"],
+        "Lead with the elbows, pull the shoulder blades down and back, and pause briefly at peak contraction.",
+    ),
+    (
+        ["deadlift", "rdl", "romanian", "hinge", "swing", "swings", "clean"],
+        "Hinge from the hips, keep the spine locked neutral, and finish with glutes instead of yanking through the low back.",
+    ),
+    (
+        ["plank", "core", "ab wheel", "sit-up", "leg raise", "knee raise", "chop", "twist", "bracing"],
+        "Exhale into a hard brace, keep the pelvis controlled, and resist rotation instead of rushing the movement.",
+    ),
+    (
+        ["jump", "jumps", "bound", "bounds", "ladder", "agility", "footwork", "cut", "deceleration"],
+        "Land softly, stay springy through the ankles, and prioritize crisp direction changes over reckless speed.",
+    ),
+    (
+        ["mobility", "flow", "breathing", "walk", "easy", "recovery", "reset", "stretching", "openers"],
+        "Keep the pace restorative, breathe through the nose, and chase better range of motion without forcing pain.",
+    ),
+]
+
 
 def parse_float(value, fallback):
     try:
@@ -361,6 +404,19 @@ def apply_medical_safety(exercise, medical_conditions):
     return exercise, False
 
 
+def get_dynamic_coaching_cue(exercise_name, strategy):
+    lower_name = exercise_name.lower()
+
+    for keywords, cue in DYNAMIC_CUE_RULES:
+        if any(keyword in lower_name for keyword in keywords):
+            return cue
+
+    if strategy == "physique":
+        return "Control the eccentric, own the peak contraction, and keep every rep inside clean hypertrophy mechanics."
+
+    return "Move with decisive intent, maintain technical shape under fatigue, and stop before speed breaks form."
+
+
 def build_routine_items(exercises, strategy, age, weight, height, medical_conditions, workout_preferences):
     calculated_routines = []
 
@@ -370,18 +426,18 @@ def build_routine_items(exercises, strategy, age, weight, height, medical_condit
         if strategy == "physique":
             sets = 4 if weight >= 75 else 3
             reps = "8 to 12 reps"
-            intensity = "Focus on a 3-second negative eccentric tempo for maximal mechanical hypertrophy damage."
         else:
             sets = 5 if height >= 180 else 4
             reps = "5 explosive reps" if any(keyword in safe_exercise.lower() for keyword in ["deadlift", "clean", "pull"]) else "45 seconds max effort"
-            intensity = "Execute with maximal concentric velocity. Rest fully between sets to prevent neural fatigue."
+
+        intensity = get_dynamic_coaching_cue(safe_exercise, strategy)
 
         if age > 40 and is_compound_exercise(safe_exercise):
             sets = 3
             intensity += " Recovery Tip: Volume reduced for structural recovery and joint resilience."
 
         if injury_modified:
-            intensity += " Injury Modification Applied."
+            intensity += " Injury Modification Applied: keep range pain-free and prioritize stable control over load."
 
         calculated_routines.append({
             "name": safe_exercise,
@@ -395,7 +451,7 @@ def build_routine_items(exercises, strategy, age, weight, height, medical_condit
             "name": finisher,
             "sets": 3,
             "reps": "12 reps",
-            "coaching_cue": "Preference Finisher: Added to match your requested muscle-group focus.",
+            "coaching_cue": f"Preference Finisher: Added to match your requested muscle-group focus. {get_dynamic_coaching_cue(finisher, strategy)}",
         })
 
     return calculated_routines
