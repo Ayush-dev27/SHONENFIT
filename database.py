@@ -4,9 +4,24 @@ def init_db():
     # This automatically connects to a local file named 'shonenfit.db'.
     # If the file doesn't exist, Python will create it right in your folder.
     conn = sqlite3.connect('shonenfit.db')
+    conn.execute('PRAGMA foreign_keys = ON')
     cursor = conn.cursor()
     
     # Writing and executing your SQL schema
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            age INTEGER NOT NULL,
+            weight REAL NOT NULL,
+            height REAL NOT NULL,
+            current_grade TEXT DEFAULT 'Grade 4',
+            total_exp INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+    ''')
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS user_profiles (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,11 +53,13 @@ def init_db():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS workout_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
             character_id TEXT NOT NULL,
             paradigm TEXT NOT NULL,
             sets_completed INTEGER NOT NULL,
             exp_earned INTEGER NOT NULL,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )
     ''')
     

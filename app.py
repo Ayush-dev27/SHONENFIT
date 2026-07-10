@@ -1,6 +1,7 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, session, send_from_directory 
 from flask_cors import CORS
 import sqlite3
+import hashlib
 from datetime import datetime
 
 # Import both core engines you built
@@ -8,7 +9,8 @@ from generator import generate_custom_routine
 from progression import process_workout_log
 
 app = Flask(__name__)
-CORS(app)
+app.secret_key = 'shonenfit-dev-secret'
+CORS(app, supports_credentials=True)
 
 DATABASE_FILE = 'shonenfit.db'
 
@@ -26,32 +28,168 @@ CHARACTER_DISPLAY_NAMES = {
 
 def ensure_database_tables():
     conn = sqlite3.connect(DATABASE_FILE)
+    conn.execute('PRAGMA foreign_keys = ON')
     cursor = conn.cursor()
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            age INTEGER NOT NULL,
+            weight REAL NOT NULL,
+            height REAL NOT NULL,
+            current_grade TEXT DEFAULT 'Grade 4',
+            total_exp INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_profiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            selected_universe TEXT NOT NULL,
+            selected_character TEXT NOT NULL,
+            training_strategy TEXT NOT NULL,
+            age INTEGER NOT NULL,
+            height_cm REAL NOT NULL,
+            weight_kg REAL NOT NULL,
+            medical_history TEXT,
+            special_preferences TEXT,
+            current_grade TEXT DEFAULT 'Grade 4',
+            total_exp INTEGER DEFAULT 0,
+            weekly_workout_count INTEGER DEFAULT 0,
+            last_workout_logged_at TEXT,
+            current_streak_weeks INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    history_columns = {
+        row[1] for row in cursor.execute("PRAGMA table_info(workout_history)").fetchall()
+    }
+
+    if history_columns and 'user_id' not in history_columns:
+        cursor.execute('''
+            INSERT OR IGNORE INTO users (
+                id, username, password_hash, age, weight, height, current_grade, total_exp
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            1,
+            'legacy_recruit',
+            'local-dev-auth-pending',
+            25,
+            70,
+            175,
+            'Grade 4',
+            0
+        ))
+        cursor.execute('ALTER TABLE workout_history RENAME TO workout_history_legacy')
+        cursor.execute('''
+            CREATE TABLE workout_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                character_id TEXT NOT NULL,
+                paradigm TEXT NOT NULL,
+                sets_completed INTEGER NOT NULL,
+                exp_earned INTEGER NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        ''')
+        cursor.execute('''
+            INSERT INTO workout_history (
+                id, user_id, character_id, paradigm, sets_completed, exp_earned, timestamp
+            )
+            SELECT id, 1, character_id, paradigm, sets_completed, exp_earned, timestamp
+            FROM workout_history_legacy
+        ''')
+        cursor.execute('DROP TABLE workout_history_legacy')
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS workout_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
             character_id TEXT NOT NULL,
             paradigm TEXT NOT NULL,
             sets_completed INTEGER NOT NULL,
             exp_earned INTEGER NOT NULL,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )
     ''')
     conn.commit()
     conn.close()
 
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    return hash_password(password) == password_hash
+
+
 ensure_database_tables()
+
+@app.route('/')
+def index():
+    # This serves your index.html file when you go to http://127.0.0.1:5000/
+    return send_from_directory('.', 'index.html') 
+
+@app.route('/<path:path>')
+def serve_static(path):
+    # This automatically catches requests for style.css, script.js, or images
+    return send_from_directory('.', path) 
+
+def upsert_user_account(cursor, username, age, weight, height, current_grade='Grade 4', total_exp=0, password_hash=None):
+    safe_password_hash = password_hash or 'local-dev-auth-pending'
+    cursor.execute('''
+        INSERT OR IGNORE INTO users (
+            username, password_hash, age, weight, height, current_grade, total_exp
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        username,
+        safe_password_hash,
+        age,
+        weight,
+        height,
+        current_grade,
+        total_exp
+    ))
+    cursor.execute('''
+        UPDATE users
+        SET age = ?,
+            weight = ?,
+            height = ?,
+            current_grade = ?,
+            total_exp = ?
+        WHERE username = ?
+    ''', (
+        age,
+        weight,
+        height,
+        current_grade,
+        total_exp,
+        username
+    ))
+    return cursor.execute(
+        'SELECT id FROM users WHERE username = ?',
+        (username,)
+    ).fetchone()[0]
 
 def calculate_streak(user_id=1):
     ensure_database_tables()
 
     conn = sqlite3.connect(DATABASE_FILE)
+    conn.execute('PRAGMA foreign_keys = ON')
     cursor = conn.cursor()
     rows = cursor.execute('''
         SELECT DISTINCT DATE(timestamp) AS training_date
         FROM workout_history
+        WHERE user_id = ?
         ORDER BY training_date DESC
-    ''').fetchall()
+    ''', (user_id,)).fetchall()
     conn.close()
 
     if not rows:
@@ -84,24 +222,147 @@ def calculate_streak(user_id=1):
 
     return streak_count
 
-@app.route('/api/profile', methods=['POST'])
-def create_profile():
+@app.route('/api/signup', methods=['POST'])
+def signup():
     try:
-        data = request.get_json()
-        
+        data = request.get_json(silent=True) or {}
+        username = (data.get('username') or '').strip()
+        password = data.get('password') or ''
+        age = int(data.get('age', 25))
+        weight = float(data.get('weight', 70))
+        height = float(data.get('height', 175))
+
+        if not username or not password:
+            return jsonify({"status": "error", "message": "Username and password are required."}), 400
+
+        ensure_database_tables()
+
+        conn = sqlite3.connect(DATABASE_FILE)
+        conn.execute('PRAGMA foreign_keys = ON')
+        cursor = conn.cursor()
+
+        existing_user = cursor.execute(
+            'SELECT id FROM users WHERE username = ?',
+            (username,)
+        ).fetchone()
+
+        if existing_user:
+            conn.close()
+            return jsonify({"status": "error", "message": "Username already exists."}), 409
+
+        password_hash = hash_password(password)
+        cursor.execute('''
+            INSERT INTO users (
+                username, password_hash, age, weight, height, current_grade, total_exp
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            username,
+            password_hash,
+            age,
+            weight,
+            height,
+            'Grade 4',
+            0
+        ))
+        user_id = cursor.lastrowid
+
+        conn.commit()
+        conn.close()
+
+        session['user_id'] = user_id
+        session['username'] = username
+
+        return jsonify({
+            "status": "success",
+            "message": "Account created successfully.",
+            "user": {
+                "id": user_id,
+                "username": username,
+                "age": age,
+                "weight": weight,
+                "height": height,
+                "current_grade": "Grade 4"
+            }
+        }), 201
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    try:
+        data = request.get_json(silent=True) or {}
+        username = (data.get('username') or '').strip()
+        password = data.get('password') or ''
+
+        if not username or not password:
+            return jsonify({"status": "error", "message": "Username and password are required."}), 400
+
+        ensure_database_tables()
+
+        conn = sqlite3.connect(DATABASE_FILE)
+        conn.execute('PRAGMA foreign_keys = ON')
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        user = cursor.execute(
+            'SELECT id, username, password_hash, age, weight, height, current_grade, total_exp FROM users WHERE username = ?',
+            (username,)
+        ).fetchone()
+
+        conn.close()
+
+        if not user or not verify_password(password, user['password_hash']):
+            return jsonify({"status": "error", "message": "Invalid username or password."}), 401
+
+        session['user_id'] = user['id']
+        session['username'] = user['username']
+
+        return jsonify({
+            "status": "success",
+            "message": "Logged in successfully.",
+            "user": {
+                "id": user['id'],
+                "username": user['username'],
+                "age": user['age'],
+                "weight": user['weight'],
+                "height": user['height'],
+                "current_grade": user['current_grade']
+            }
+        }), 200
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+
+@app.route('/api/profile', methods=['GET', 'POST'])
+def create_profile():
+    if request.method == 'GET':
+        user_id = session.get('user_id')
+        if not user_id:
+            return jsonify({"status": "error", "message": "Unauthorized"}), 401
+        return jsonify({"status": "success", "user_id": user_id})
+
+    try:
+        data = request.get_json(silent=True) or {}
+
         username = data.get('username', 'Recruit')
         selected_universe = data.get('selectedUniverse')
         selected_character = data.get('selectedCharacter')
         training_strategy = data.get('strategyGoal')
-        age = int(data.get('age'))
-        height = float(data.get('height'))
-        weight = float(data.get('weight'))
+        age = int(data.get('age', 25))
+        height = float(data.get('height', 175))
+        weight = float(data.get('weight', 70))
         medical_history = data.get('medicalHistory', '')
         special_preferences = data.get('specialPreferences', '')
-        
+
+        ensure_database_tables()
+
         conn = sqlite3.connect(DATABASE_FILE)
+        conn.execute('PRAGMA foreign_keys = ON')
         cursor = conn.cursor()
-        
+
         cursor.execute('''
             INSERT INTO user_profiles (
                 username, selected_universe, selected_character, training_strategy,
@@ -111,17 +372,31 @@ def create_profile():
             username, selected_universe, selected_character, training_strategy,
             age, height, weight, medical_history, special_preferences
         ))
-        
+
+        user_account_id = upsert_user_account(
+            cursor,
+            username=username,
+            age=age,
+            weight=weight,
+            height=height,
+            current_grade='Grade 4',
+            total_exp=0,
+            password_hash=data.get('password_hash') or data.get('passwordHash')
+        )
+
+        session['user_id'] = user_account_id
+        session['username'] = username
+
         conn.commit()
         conn.close()
-        
+
         routine_payload = generate_custom_routine(data)
-        
+
         return jsonify({
             "status": "success",
             "message": "Profile synced to database and custom pipeline initialized!",
             "initial_grade": "Grade 4",
-            "current_streak": calculate_streak(),
+            "current_streak": calculate_streak(user_account_id),
             "workout_data": routine_payload
         }), 201
 
@@ -212,6 +487,7 @@ def complete_workout():
         ensure_database_tables()
 
         conn = sqlite3.connect(DATABASE_FILE)
+        conn.execute('PRAGMA foreign_keys = ON')
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
@@ -226,12 +502,23 @@ def complete_workout():
                 "message": "User profile not found. Complete initialization first!"
             }), 404
 
+        user_account_id = upsert_user_account(
+            cursor,
+            username=user['username'],
+            age=user['age'],
+            weight=user['weight_kg'],
+            height=user['height_cm'],
+            current_grade=user['current_grade'],
+            total_exp=user['total_exp']
+        )
+
         workout_logged_today = cursor.execute('''
             SELECT id
             FROM workout_history
-            WHERE date(timestamp) = date('now', 'localtime')
+            WHERE user_id = ?
+              AND date(timestamp) = date('now', 'localtime')
             LIMIT 1
-        ''').fetchone()
+        ''', (user_account_id,)).fetchone()
 
         if workout_logged_today:
             conn.close()
@@ -264,10 +551,22 @@ def complete_workout():
         ))
 
         cursor.execute('''
-            INSERT INTO workout_history (
-                character_id, paradigm, sets_completed, exp_earned
-            ) VALUES (?, ?, ?, ?)
+            UPDATE users
+            SET total_exp = ?,
+                current_grade = ?
+            WHERE id = ?
         ''', (
+            total_exp,
+            current_grade,
+            user_account_id
+        ))
+
+        cursor.execute('''
+            INSERT INTO workout_history (
+                user_id, character_id, paradigm, sets_completed, exp_earned
+            ) VALUES (?, ?, ?, ?, ?)
+        ''', (
+            user_account_id,
             character_id,
             paradigm,
             sets_completed,
@@ -277,7 +576,7 @@ def complete_workout():
         conn.commit()
         conn.close()
 
-        current_streak = calculate_streak(user['id'])
+        current_streak = calculate_streak(user_account_id)
 
         return jsonify({
             "status": "success",
@@ -298,14 +597,37 @@ def get_workout_history():
         ensure_database_tables()
 
         conn = sqlite3.connect(DATABASE_FILE)
+        conn.execute('PRAGMA foreign_keys = ON')
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
+        username = request.args.get('username')
+        if username:
+            user_account = cursor.execute(
+                'SELECT id FROM users WHERE username = ?',
+                (username,)
+            ).fetchone()
+        else:
+            latest_profile = cursor.execute(
+                'SELECT username FROM user_profiles ORDER BY id DESC LIMIT 1'
+            ).fetchone()
+            user_account = cursor.execute(
+                'SELECT id FROM users WHERE username = ?',
+                (latest_profile['username'],)
+            ).fetchone() if latest_profile else cursor.execute(
+                'SELECT id FROM users ORDER BY id DESC LIMIT 1'
+            ).fetchone()
+
+        if not user_account:
+            conn.close()
+            return jsonify([]), 200
+
         rows = cursor.execute('''
-            SELECT id, character_id, paradigm, sets_completed, exp_earned, timestamp
+            SELECT id, user_id, character_id, paradigm, sets_completed, exp_earned, timestamp
             FROM workout_history
+            WHERE user_id = ?
             ORDER BY timestamp DESC
-        ''').fetchall()
+        ''', (user_account['id'],)).fetchall()
 
         history = []
         for row in rows:
@@ -318,6 +640,7 @@ def get_workout_history():
 
             history.append({
                 "id": row['id'],
+                "user_id": row['user_id'],
                 "character_id": character_id,
                 "character_name": character_name,
                 "paradigm": paradigm,
