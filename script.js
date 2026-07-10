@@ -1510,11 +1510,6 @@ function wireHonestyGateControls() {
 function showHonestyGate() {
     console.log('[SHONENFIT] Executing showHonestyGate now...');
     const modal = document.getElementById('honesty-gate-modal');
-
-    if (modal && modal.parentElement !== document.body) {
-        document.body.appendChild(modal);
-    }
-
     const quotesSlot = document.getElementById('honesty-character-quote');
 
     if (!modal) {
@@ -1522,58 +1517,22 @@ function showHonestyGate() {
         return;
     }
 
-    // Set dynamic motivation quote text if helper is available
     if (quotesSlot && typeof getHonestyGateQuote === 'function') {
-        quotesSlot.textContent = getHonestyGateQuote();
+        try {
+            quotesSlot.textContent = getHonestyGateQuote();
+        } catch (error) {
+            console.warn('[SHONENFIT] Failed to load character quote dynamically:', error);
+            quotesSlot.textContent = "A true warrior records only facts.";
+        }
     }
 
-    // 1. Vaporize the hidden class flag instantly
+    if (modal.parentElement !== document.body) {
+        document.body.appendChild(modal);
+    }
+
     modal.classList.remove('hidden');
-    
-    // 2. FORCE THE OUTER WRAPPER CONTAINER ACTIVE VIA RAW INLINE JS
-    modal.style.cssText = `
-        display: flex !important;
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        width: 100vw !important;
-        height: 100vh !important;
-        background-color: rgba(10, 12, 16, 0.96) !important;
-        backdrop-filter: blur(8px) !important;
-        z-index: 9999999 !important;
-        justify-content: center !important;
-        align-items: center !important;
-    `;
-    
-    // 3. FORCE THE INNER CARD TO SCALE AND APPEAR REVEALED
-    const innerCard = modal.querySelector('.honesty-gate-card');
-    if (innerCard) {
-        innerCard.style.cssText = `
-            display: block !important;
-            width: min(94vw, 620px) !important;
-            max-height: 90vh !important;
-            overflow-y: auto !important;
-        `;
-    }
-    
-    console.log('[SHONENFIT] Total inline DOM structural dimensions applied.');
-} 
-
-function unhideHonestyGateModal(modal) {
-  modal.classList.add('is-opening');
-  modal.classList.remove('hidden');
-  modal.classList.remove('d-none');
-  modal.removeAttribute('hidden');
-  modal.setAttribute('aria-hidden', 'false');
-  modal.style.setProperty('display', 'flex', 'important');
-  modal.style.alignItems = 'center';
-  modal.style.justifyContent = 'center';
-  console.log('[SHONENFIT] DOM visibility override applied to honesty-gate-modal');
-
-  window.requestAnimationFrame(() => {
-    modal.classList.remove('is-opening');
-    modal.querySelector('button')?.focus({ preventScroll: true });
-  });
+    modal.classList.add('is-active');
+    console.log('[SHONENFIT] Clean state class .is-active applied.');
 }
 
 function hideHonestyGate() {
@@ -1582,12 +1541,9 @@ function hideHonestyGate() {
     return;
   }
 
-  modal.classList.remove('is-opening');
+  modal.classList.remove('is-active');
   modal.classList.add('hidden');
   modal.setAttribute('aria-hidden', 'true');
-  modal.style.removeProperty('display');
-  modal.style.removeProperty('align-items');
-  modal.style.removeProperty('justify-content');
 }
 
 function getHonestyGateQuote() {
