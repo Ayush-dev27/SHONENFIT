@@ -7,6 +7,8 @@
 // ============================================================================
 
 const API_PROFILE_ENDPOINT = 'http://127.0.0.1:5000/api/profile';
+const API_SIGNUP_ENDPOINT = 'http://127.0.0.1:5000/api/signup';
+const API_LOGIN_ENDPOINT = 'http://127.0.0.1:5000/api/login';
 const API_WORKOUT_COMPLETE_ENDPOINT = 'http://127.0.0.1:5000/api/workout-complete';
 const API_WORKOUT_HISTORY_ENDPOINT = 'http://127.0.0.1:5000/api/workout-history';
 const TIMER_TOTAL_SECONDS = 90;
@@ -26,6 +28,7 @@ const appState = {
   selectedDirection: null,
   latestWorkoutData: null,
   isSubmitting: false,
+  isAuthenticated: false,
   userMetrics: {
     age: null,
     height: null,
@@ -69,6 +72,28 @@ const universeCardBackgrounds = {
   'My Hero Academia': 'images/mha-bg.jpg.jpg',
 };
 
+// --- BULLETPROOF COMPLETED ARC CLICK HANDLER ---
+document.addEventListener('click', (event) => {
+    const button = event.target.closest('button');
+    const buttonLabel = button?.textContent?.trim() || '';
+
+    // Intercept only when clicking the specific Completed Training Arc button
+    if (!button || !/COMPLETED TRAINING ARC/i.test(buttonLabel)) {
+        return;
+    }
+
+    console.log('[SHONENFIT] Completed Arc Button click intercepted successfully!');
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Directly call the real function that removes the hidden class
+    if (typeof showHonestyGate === 'function') {
+        showHonestyGate();
+    } else {
+        console.error('[SHONENFIT] Architecture Error: showHonestyGate function definition not found!');
+    }
+}); 
+
 // ============================================================================
 // BOOTSTRAP
 // ============================================================================
@@ -76,6 +101,7 @@ const universeCardBackgrounds = {
 document.addEventListener('DOMContentLoaded', () => {
   installGlobalNavigationInterception();
   applyUniverseCardGraphics();
+  wireAuthPortal();
   wireMetricsSubmission();
   wireWorkoutRouteButton();
   wireWorkoutControlButtons();
@@ -85,6 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
   bindSetTrackingSelectors();
   initializeTimerDisplay();
   fetchWorkoutHistory();
+  checkAuthSessionOnLoad();
 });
 
 // ============================================================================
@@ -147,7 +174,14 @@ function populateCharacterPool(universeName) {
 function selectCharacter(characterName, universeName) {
   appState.selectedCharacter = characterName;
   appState.selectedUniverse = normalizeUniverseKey(universeName || appState.selectedUniverse);
-  navigateView('form-view');
+
+  if (!appState.isAuthenticated) {
+    showAuthPortal();
+    return;
+  }
+
+  showPathGate();
+  navigateView('path-gate');
 }
 
 function normalizeUniverseKey(universeName) {
@@ -187,6 +221,315 @@ function applyUniverseCardGraphics() {
     });
     visual.appendChild(overlay);
   });
+}
+
+// ============================================================================
+// AUTHENTICATION PORTAL
+// ============================================================================
+
+async function checkAuthSessionOnLoad() {
+  try {
+    const response = await fetch(API_PROFILE_ENDPOINT, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+
+    if (response.status === 401) {
+      showAuthPortal();
+      return;
+    }
+
+    if (!response.ok) {
+      console.info(`[SHONENFIT] Session probe skipped: HTTP ${response.status}`);
+      return;
+    }
+
+    const result = await response.json();
+    handleAuthSuccess(result);
+  } catch (error) {
+    console.info('[SHONENFIT] Auth session probe unavailable; continuing local SPA mode.', error);
+  }
+}
+
+function wireAuthPortal() {
+  const signupForm = document.getElementById('signup-form');
+  const loginForm = document.getElementById('login-form');
+  const authSubmitButton = document.getElementById('auth-submit-btn');
+  const authTabs = document.querySelectorAll('input[name="auth-tab"]');
+  const authTabLabels = document.querySelectorAll('.auth-tab-label');
+
+  syncAuthPortalScrollState();
+
+  authTabs.forEach((tab) => {
+    tab.addEventListener('change', syncAuthPortalScrollState);
+  });
+
+  authTabLabels.forEach((label) => {
+    label.addEventListener('click', () => {
+      window.requestAnimationFrame(syncAuthPortalScrollState);
+    });
+  });
+
+  signupForm?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    submitAuthForm('signup');
+  });
+
+  loginForm?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    submitAuthForm('login');
+  });
+
+  authSubmitButton?.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const activeMode = document.getElementById('auth-login-tab')?.checked ? 'login' : 'signup';
+    submitAuthForm(activeMode);
+  });
+}
+
+function syncAuthPortalScrollState() {
+  const isLoginActive = document.getElementById('auth-login-tab')?.checked;
+  const activePanel = document.getElementById(isLoginActive ? 'login-form' : 'signup-form');
+  const inactivePanel = document.getElementById(isLoginActive ? 'signup-form' : 'login-form');
+  const authOverlay = document.getElementById('auth-portal-overlay');
+
+  document.body?.style.setProperty('overflow-y', 'auto', 'important');
+
+  if (authOverlay) {
+    authOverlay.style.overflowY = 'auto';
+  }
+
+  inactivePanel?.classList.remove('auth-panel-active');
+
+  if (activePanel) {
+    activePanel.classList.add('auth-panel-active');
+    activePanel.style.overflowY = 'visible';
+  }
+}
+
+async function submitAuthForm(mode) {
+  clearAuthError();
+  setAuthLoadingState(true);
+
+  const payload = mode === 'signup' ? buildSignupPayload() : buildLoginPayload();
+  const endpoint = mode === 'signup' ? API_SIGNUP_ENDPOINT : API_LOGIN_ENDPOINT;
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok || result?.status === 'error') {
+      showAuthError(result?.message || `Authentication failed with HTTP ${response.status}.`);
+      return;
+    }
+
+    handleAuthSuccess(result, payload, mode);
+  } catch (error) {
+    console.error('[SHONENFIT] Auth request failed:', error);
+    showAuthError('Could not reach the auth server. Make sure Flask is running on http://127.0.0.1:5000.');
+  } finally {
+    setAuthLoadingState(false);
+  }
+}
+
+function buildSignupPayload() {
+  return {
+    username: document.getElementById('signup-username')?.value.trim() || 'Recruit',
+    password: document.getElementById('signup-password')?.value || '',
+    age: document.getElementById('signup-age')?.value || DEFAULT_PROFILE_VALUES.age,
+    weight: document.getElementById('signup-weight')?.value || DEFAULT_PROFILE_VALUES.weight,
+    height: document.getElementById('signup-height')?.value || DEFAULT_PROFILE_VALUES.height,
+  };
+}
+
+function buildLoginPayload() {
+  return {
+    username: document.getElementById('login-username')?.value.trim() || '',
+    password: document.getElementById('login-password')?.value || '',
+  };
+}
+
+function handleAuthSuccess(result = {}, submittedPayload = {}, mode = 'login') {
+  appState.isAuthenticated = true;
+  hideAuthPortal();
+  showMainLandingPage();
+  hidePathGate();
+
+  const profileData = result.profile || result.user || result;
+  const workoutData = normalizeWorkoutData(result.workout_data || profileData.workout_data);
+  const hasSavedPathSelection = hasActivePathSelection(profileData);
+
+  if (submittedPayload.age || profileData.age) {
+    appState.userMetrics = {
+      age: submittedPayload.age || profileData.age || null,
+      height: submittedPayload.height || profileData.height || null,
+      weight: submittedPayload.weight || profileData.weight || null,
+      medicalHistory: profileData.medical_history || null,
+      preferences: profileData.special_preferences || null,
+    };
+  }
+
+  if (!hasSavedPathSelection) {
+    navigateView('universe-view');
+    return;
+  }
+
+  if (workoutData) {
+    appState.latestWorkoutData = workoutData;
+    renderDashboardSummary(workoutData);
+  }
+
+  previousGrade = result.current_grade || profileData.current_grade || previousGrade;
+  applyRankBadgeState(previousGrade);
+  renderDashboardStreak(result.current_streak !== undefined ? result : profileData);
+  fetchWorkoutHistory();
+  navigateView('dashboard-view');
+}
+
+function hasActivePathSelection(profileData = {}) {
+  const selectedCharacter = appState.selectedCharacter
+    || profileData.selected_character
+    || profileData.selectedCharacter
+    || profileData.character
+    || '';
+  const selectedUniverse = appState.selectedUniverse
+    || profileData.selected_universe
+    || profileData.selectedUniverse
+    || profileData.universe
+    || '';
+
+  return Boolean(selectedCharacter || selectedUniverse);
+}
+
+function hidePathGate() {
+  const pathGate = document.getElementById('path-gate');
+  if (!pathGate) {
+    return;
+  }
+
+  pathGate.classList.remove('active');
+  pathGate.classList.remove('active-view');
+  pathGate.classList.add('hidden');
+  pathGate.style.display = 'none';
+  pathGate.setAttribute('aria-hidden', 'true');
+}
+
+function showPathGate() {
+  const pathGate = document.getElementById('path-gate');
+  if (!pathGate) {
+    return;
+  }
+
+  pathGate.classList.remove('hidden');
+  pathGate.classList.add('active');
+  pathGate.classList.add('active-view');
+  pathGate.style.display = '';
+  pathGate.setAttribute('aria-hidden', 'false');
+}
+
+function showMainLandingPage() {
+  const authGate = document.getElementById('auth-gate');
+  if (authGate) {
+    authGate.style.display = 'none';
+  }
+
+  document.getElementById('auth-portal-overlay')?.classList.add('hidden');
+  setMainAppVisibility(true);
+  navigateView('home');
+}
+
+function showAuthPortal() {
+  appState.isAuthenticated = false;
+  setMainAppVisibility(false);
+  hidePathGate();
+
+  const authGate = document.getElementById('auth-gate');
+  if (authGate) {
+    authGate.style.display = '';
+  }
+
+  const dashboardView = document.getElementById('dashboard-view');
+  if (dashboardView) {
+    dashboardView.classList.add('hidden');
+    dashboardView.style.display = 'none';
+  }
+
+  document.getElementById('auth-portal-overlay')?.classList.remove('hidden');
+}
+
+function hideAuthPortal() {
+  const authGate = document.getElementById('auth-gate');
+  if (authGate) {
+    authGate.style.display = 'none';
+  }
+
+  document.getElementById('auth-portal-overlay')?.classList.add('hidden');
+}
+
+function setMainAppVisibility(isVisible) {
+  document.querySelectorAll('.flow-view').forEach((view) => {
+    view.style.display = isVisible ? '' : 'none';
+    view.setAttribute('aria-hidden', String(!isVisible));
+  });
+
+  if (isVisible) {
+    const hasActiveView = document.querySelector('.flow-view.active-view, .flow-view.active');
+    if (!hasActiveView) {
+      navigateView('dashboard-view');
+    }
+  }
+}
+
+function showAuthError(message) {
+  const portalCard = document.querySelector('#auth-portal-overlay .auth-portal-card');
+  if (!portalCard) {
+    alert(message);
+    return;
+  }
+
+  let errorBox = document.getElementById('auth-error-message');
+  if (!errorBox) {
+    errorBox = document.createElement('div');
+    errorBox.id = 'auth-error-message';
+    errorBox.className = 'auth-error-message';
+    const submitButton = document.getElementById('auth-submit-btn');
+    portalCard.insertBefore(errorBox, submitButton || null);
+  }
+
+  errorBox.hidden = false;
+  errorBox.textContent = message;
+}
+
+function clearAuthError() {
+  const errorBox = document.getElementById('auth-error-message');
+  if (errorBox) {
+    errorBox.textContent = '';
+    errorBox.hidden = true;
+  }
+}
+
+function setAuthLoadingState(isLoading) {
+  const authSubmitButton = document.getElementById('auth-submit-btn');
+  if (!authSubmitButton) {
+    return;
+  }
+
+  authSubmitButton.disabled = isLoading;
+  authSubmitButton.textContent = isLoading ? 'OPENING GATE...' : 'ENTER THE TRAINING GROUNDS';
 }
 
 // ============================================================================
@@ -853,8 +1196,9 @@ function ensureWorkoutRuntimeStyles() {
 
 function wireWorkoutControlButtons() {
   const timerButton = document.querySelector('#workout-active-view .timer-button');
-  const completeButton = Array.from(document.querySelectorAll('#workout-active-view button'))
-    .find((button) => button.textContent.trim() === 'COMPLETED TRAINING ARC (CLAIM EXP)');
+  const completeButton = document.getElementById('complete-workout-btn')
+    || Array.from(document.querySelectorAll('#workout-active-view button'))
+      .find((button) => /COMPLETED TRAINING ARC/i.test(button.textContent));
   const backButton = Array.from(document.querySelectorAll('#workout-active-view button'))
     .find((button) => button.textContent.includes('Back to Dashboard'));
 
@@ -865,8 +1209,9 @@ function wireWorkoutControlButtons() {
   }
 
   if (completeButton) {
+    completeButton.type = 'button';
     completeButton.removeAttribute('onclick');
-    completeButton.addEventListener('click', completeWorkout);
+    completeButton.setAttribute('data-complete-workout', 'true');
   }
 
   if (backButton) {
@@ -1122,10 +1467,21 @@ function launchAscensionOverlay(newGrade, completedSets, result) {
 // MISSION COMPLETION
 // ============================================================================
 
-function completeWorkout(event) {
-  event?.preventDefault();
-  event?.stopPropagation();
-  showHonestyGate();
+function captureWorkoutCompletionContext() {
+  const setButtons = document.querySelectorAll('#exercise-cards-container .set-btn, #exercise-cards-container .set-button');
+  const completedSets = Array.from(setButtons)
+    .filter((button) => button.classList.contains('completed')).length;
+  const totalSets = setButtons.length;
+
+  const workoutContext = {
+    character_id: getActiveCharacterId(),
+    sets_completed: completedSets,
+    total_sets: totalSets,
+    completed_at: new Date().toISOString(),
+  };
+
+  appState.latestWorkoutData = workoutContext;
+  return workoutContext;
 }
 
 function wireHonestyGateControls() {
@@ -1152,24 +1508,86 @@ function wireHonestyGateControls() {
 }
 
 function showHonestyGate() {
-  const modal = document.getElementById('honesty-gate-modal');
-  const quoteSlot = document.getElementById('honesty-character-quote');
+    console.log('[SHONENFIT] Executing showHonestyGate now...');
+    const modal = document.getElementById('honesty-gate-modal');
 
-  if (!modal) {
-    submitWorkoutCompletion();
-    return;
-  }
+    if (modal && modal.parentElement !== document.body) {
+        document.body.appendChild(modal);
+    }
 
-  if (quoteSlot) {
-    quoteSlot.textContent = getHonestyGateQuote();
-  }
+    const quotesSlot = document.getElementById('honesty-character-quote');
 
+    if (!modal) {
+        console.error('[SHONENFIT] HTML structural error: #honesty-gate-modal element does not exist in the DOM!');
+        return;
+    }
+
+    // Set dynamic motivation quote text if helper is available
+    if (quotesSlot && typeof getHonestyGateQuote === 'function') {
+        quotesSlot.textContent = getHonestyGateQuote();
+    }
+
+    // 1. Vaporize the hidden class flag instantly
+    modal.classList.remove('hidden');
+    
+    // 2. FORCE THE OUTER WRAPPER CONTAINER ACTIVE VIA RAW INLINE JS
+    modal.style.cssText = `
+        display: flex !important;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        background-color: rgba(10, 12, 16, 0.96) !important;
+        backdrop-filter: blur(8px) !important;
+        z-index: 9999999 !important;
+        justify-content: center !important;
+        align-items: center !important;
+    `;
+    
+    // 3. FORCE THE INNER CARD TO SCALE AND APPEAR REVEALED
+    const innerCard = modal.querySelector('.honesty-gate-card');
+    if (innerCard) {
+        innerCard.style.cssText = `
+            display: block !important;
+            width: min(94vw, 620px) !important;
+            max-height: 90vh !important;
+            overflow-y: auto !important;
+        `;
+    }
+    
+    console.log('[SHONENFIT] Total inline DOM structural dimensions applied.');
+} 
+
+function unhideHonestyGateModal(modal) {
+  modal.classList.add('is-opening');
   modal.classList.remove('hidden');
+  modal.classList.remove('d-none');
+  modal.removeAttribute('hidden');
+  modal.setAttribute('aria-hidden', 'false');
+  modal.style.setProperty('display', 'flex', 'important');
+  modal.style.alignItems = 'center';
+  modal.style.justifyContent = 'center';
+  console.log('[SHONENFIT] DOM visibility override applied to honesty-gate-modal');
+
+  window.requestAnimationFrame(() => {
+    modal.classList.remove('is-opening');
+    modal.querySelector('button')?.focus({ preventScroll: true });
+  });
 }
 
 function hideHonestyGate() {
   const modal = document.getElementById('honesty-gate-modal');
-  modal?.classList.add('hidden');
+  if (!modal) {
+    return;
+  }
+
+  modal.classList.remove('is-opening');
+  modal.classList.add('hidden');
+  modal.setAttribute('aria-hidden', 'true');
+  modal.style.removeProperty('display');
+  modal.style.removeProperty('align-items');
+  modal.style.removeProperty('justify-content');
 }
 
 function getHonestyGateQuote() {
@@ -1232,10 +1650,9 @@ async function submitWorkoutCompletion(event) {
   event?.stopPropagation();
   await unlockTimerAudioContext();
 
-  const setButtons = document.querySelectorAll('#exercise-cards-container .set-btn, #exercise-cards-container .set-button');
-  const completedSets = Array.from(setButtons)
-    .filter((button) => button.classList.contains('active') || button.classList.contains('completed')).length;
-  const totalSets = setButtons.length;
+  const completionContext = captureWorkoutCompletionContext();
+  const completedSets = Number(completionContext?.sets_completed || 0);
+  const totalSets = Number(completionContext?.total_sets || 0);
 
   if (completedSets === 0) {
     alert('Focus, Hero! Log at least one completed set before claiming your EXP.');
@@ -1243,13 +1660,14 @@ async function submitWorkoutCompletion(event) {
   }
 
   const payload = {
-    character_id: getActiveCharacterId(),
+    character_id: completionContext?.character_id || getActiveCharacterId(),
     sets_completed: completedSets,
   };
 
   try {
     const response = await fetch(API_WORKOUT_COMPLETE_ENDPOINT, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -1399,6 +1817,5 @@ window.selectCharacter = selectCharacter;
 window.accessWorkout = accessWorkout;
 window.toggleSet = toggleSet;
 window.toggleRestTimer = toggleRestTimer;
-window.completeWorkout = completeWorkout;
 
 console.log('[SHONENFIT] Live backend application initialized');

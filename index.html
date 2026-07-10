@@ -104,14 +104,14 @@
 <body>
 
   <!-- HERO VIEW -->
-  <section id="hero-view" class="flow-view active-view">
+  <section id="home" class="flow-view active-view">
     <header class="navbar">
       <div class="navbar-container">
         <div class="logo">
           SHONEN<span class="logo-accent">FIT</span>
         </div>
         <nav class="nav-links">
-          <button type="button" class="nav-link" onclick="navigateView('hero-view')">Home</button>
+          <button type="button" class="nav-link" onclick="navigateView('home')">Home</button>
           <button type="button" class="nav-link" onclick="navigateView('universe-view')">Universes</button>
         </nav>
         <button class="btn btn-primary" onclick="navigateView('universe-view')">Start Your Journey</button>
@@ -205,33 +205,13 @@
     </div>
   </section>
 
-  <!-- BIOMETRIC METRICS TERMINAL VIEW -->
-  <section id="form-view" class="flow-view">
+  <!-- WARRIOR PATH GATE -->
+  <section id="path-gate" class="flow-view">
     <div class="view-container form-container">
       <div class="form-card">
-        <h2 class="section-title">RECRUIT METRICS</h2>
+        <h2 class="section-title">CHOOSE YOUR PATH</h2>
 
         <div id="vitals-form" class="form-container-wrapper">
-          <!-- Biometric Inputs -->
-          <div class="form-section">
-            <h3 class="form-section-title">Biometric Data</h3>
-            
-            <div class="form-group">
-              <label for="age" class="form-label">Age (years)</label>
-              <input type="number" id="age" name="age" class="form-input" placeholder="25" min="13" max="120">
-            </div>
-
-            <div class="form-group">
-              <label for="height" class="form-label">Height (cm)</label>
-              <input type="number" id="height" name="height" class="form-input" placeholder="180" min="50" max="300">
-            </div>
-
-            <div class="form-group">
-              <label for="weight" class="form-label">Weight (kg)</label>
-              <input type="number" id="weight" name="weight" class="form-input" placeholder="75" min="20" max="300">
-            </div>
-          </div>
-
           <!-- Medical History -->
           <div class="form-section">
             <h3 class="form-section-title">Training Background</h3>
@@ -355,23 +335,67 @@
       <!-- FOOTER ACTIONS -->
       <div class="workout-footer">
         <button class="btn btn-secondary" onclick="navigateView('dashboard-view')">← Back to Dashboard</button>
-        <button class="btn btn-accent" onclick="completeWorkout()">COMPLETED TRAINING ARC (CLAIM EXP)</button>
+        <button id="complete-workout-btn" type="button" class="btn btn-accent" data-complete-workout="true">COMPLETED TRAINING ARC (CLAIM EXP)</button>
       </div>
     </div>
   </section>
 
-  <div id="honesty-gate-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="honesty-character-quote">
-    <div class="honesty-gate-card">
-      <p class="honesty-kicker">Honesty Gate</p>
-      <h3 id="honesty-character-quote">A true warrior records only earned victories.</h3>
-      <p class="honesty-question">
-        Did you actually execute your training arc today, or are you cheating your own progression?
-      </p>
-      <div class="honesty-actions">
-        <button type="button" id="honesty-yes-btn" class="btn-confirm">I Put In The Work</button>
-        <button type="button" id="honesty-no-btn" class="btn-cancel">I Missed Today</button>
+  <div id="auth-gate" class="auth-gate">
+    <div id="auth-portal-overlay" class="auth-portal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="auth-portal-title">
+      <div class="auth-portal-card">
+      <p class="auth-kicker">SHONENFIT ACCESS GATE</p>
+      <h2 id="auth-portal-title" class="auth-title">Enter The Training Grounds</h2>
+      <p class="auth-subtitle">Secure your progression ledger before stepping into the next arc.</p>
+
+      <input type="radio" name="auth-tab" id="auth-signup-tab" class="auth-tab-input" checked>
+      <input type="radio" name="auth-tab" id="auth-login-tab" class="auth-tab-input">
+
+      <div class="auth-tabs" role="tablist" aria-label="Authentication options">
+        <label for="auth-signup-tab" class="auth-tab-label">JOIN THE CORPS</label>
+        <label for="auth-login-tab" class="auth-tab-label">RESUME ARC</label>
       </div>
+
+      <div class="auth-tab-panels">
+        <form id="signup-form" class="auth-form auth-signup-panel" autocomplete="off">
+          <div class="auth-field-group">
+            <label for="signup-username">Username</label>
+            <input type="text" id="signup-username" name="username" class="auth-input" placeholder="Choose your callsign" required>
+          </div>
+          <div class="auth-field-group">
+            <label for="signup-password">Password</label>
+            <input type="password" id="signup-password" name="password" class="auth-input" placeholder="Forge a secret seal" required>
+          </div>
+          <div class="auth-field-grid">
+            <div class="auth-field-group">
+              <label for="signup-age">Age</label>
+              <input type="number" id="signup-age" name="age" class="auth-input" placeholder="25" min="13" required>
+            </div>
+            <div class="auth-field-group">
+              <label for="signup-weight">Weight</label>
+              <input type="number" id="signup-weight" name="weight" class="auth-input" placeholder="70 kg" min="1" step="0.1" required>
+            </div>
+            <div class="auth-field-group">
+              <label for="signup-height">Height</label>
+              <input type="number" id="signup-height" name="height" class="auth-input" placeholder="175 cm" min="1" step="0.1" required>
+            </div>
+          </div>
+        </form>
+
+        <form id="login-form" class="auth-form auth-login-panel" autocomplete="off">
+          <div class="auth-field-group">
+            <label for="login-username">Username</label>
+            <input type="text" id="login-username" name="username" class="auth-input" placeholder="Enter your callsign" required>
+          </div>
+          <div class="auth-field-group">
+            <label for="login-password">Password</label>
+            <input type="password" id="login-password" name="password" class="auth-input" placeholder="Enter your secret seal" required>
+          </div>
+        </form>
+      </div>
+
+      <button type="button" id="auth-submit-btn" class="auth-submit-btn">ENTER THE TRAINING GROUNDS</button>
     </div>
+  </div>
   </div>
 
   <div id="ascension-celebrate-overlay" class="ascension-celebrate-overlay hidden">
@@ -389,6 +413,21 @@
       <div id="ascension-grade-emblem" class="ascension-grade-emblem grade-3">GRADE 3</div>
       <p class="ascension-copy">Your discipline has unlocked a higher combat tier.</p>
       <button type="button" id="claim-new-power-btn" class="btn btn-accent ascension-claim-btn">CLAIM NEW POWER</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="honesty-gate-modal" class="hidden" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="honesty-character-quote">
+    <div class="honesty-gate-card">
+      <p class="honesty-kicker">Honesty Gate</p>
+      <h3 id="honesty-character-quote">A true warrior records only earned victories.</h3>
+      <p class="honesty-question">
+        Did you actually execute your training arc today, or are you cheating your own progression?
+      </p>
+      <div class="honesty-actions">
+        <button type="button" id="honesty-yes-btn" class="btn-confirm">I Put In The Work</button>
+        <button type="button" id="honesty-no-btn" class="btn-cancel">I Missed Today</button>
+      </div>
     </div>
   </div>
 
