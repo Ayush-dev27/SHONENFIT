@@ -1455,34 +1455,50 @@ function launchAscensionOverlay(newGrade, completedSets, result) {
   gradeEmblem.textContent = newGrade.toUpperCase();
 
   if (copy) {
-    copy.textContent = `You have unlocked ${newGrade}. Claim your new power to return to the dashboard.`;
-  }
+        copy.textContent = `You have unlocked ${newGrade}. Claim your new power to return to the dashboard.`;
+    } // <-- Enforces closure of the copy check
 
-  playAscensionChime();
-  overlay.classList.remove('hidden');
-  return true;
-}
+    playAscensionChime();
+    overlay.classList.remove('hidden');
+    return true;
+} // <-- Enforces closure of launchAscensionOverlay 
 
 // ============================================================================
 // MISSION COMPLETION
 // ============================================================================
 
 function captureWorkoutCompletionContext() {
-  const setButtons = document.querySelectorAll('#exercise-cards-container .set-btn, #exercise-cards-container .set-button');
-  const completedSets = Array.from(setButtons)
-    .filter((button) => button.classList.contains('completed')).length;
-  const totalSets = setButtons.length;
+    const setButtons = document.querySelectorAll('#exercise-cards-container .set-btn');
+    const completedSetButtons = Array.from(setButtons).filter(button => button.classList.contains('completed'));
+    
+    // 1. Map out the granular set information for the BALANCE database logger
+    const granularSets = completedSetButtons.map(button => {
+        // Traverse up to find the closest card container to grab the exercise title
+        const cardElement = button.closest('.exercise-card') || button.closest('div');
+        const titleElement = cardElement ? cardElement.querySelector('.exercise-title, h4, h3') : null;
+        const exerciseName = titleElement ? titleElement.textContent.trim() : 'Unknown Exercise';
 
-  const workoutContext = {
-    character_id: getActiveCharacterId(),
-    sets_completed: completedSets,
-    total_sets: totalSets,
-    completed_at: new Date().toISOString(),
-  };
+        return {
+            exercise_name: exerciseName,
+            set_index: parseInt(button.dataset.set || '1', 10),
+            reps: 10, // Default baseline reps per set since we are using checkboxes
+            weight: 0.0 // Default baseline weight load applied
+        };
+    });
 
-  appState.latestWorkoutData = workoutContext;
-  return workoutContext;
-}
+    const totalSets = setButtons.length;
+
+    const workoutContext = {
+        character_id: getActiveCharacterId(),
+        sets_completed: completedSetButtons.length,
+        total_sets: totalSets,
+        completed_at: new Date().toISOString(),
+        sets: granularSets // Injecting the array for app.py
+    };
+
+    appState.latestWorkoutData = workoutContext;
+    return workoutContext;
+} 
 
 function wireHonestyGateControls() {
   const yesButton = document.getElementById('honesty-yes-btn');
@@ -1616,9 +1632,10 @@ async function submitWorkoutCompletion(event) {
   }
 
   const payload = {
-    character_id: completionContext?.character_id || getActiveCharacterId(),
-    sets_completed: completedSets,
-  };
+            character_id: completionContext?.character_id || getActiveCharacterId(),
+            sets_completed: completedSets,
+            sets: completionContext?.sets || [] // ⚡ THIS IS STEP 2: Bridges the data straight to app.py!
+        }; 
 
   try {
     const response = await fetch(API_WORKOUT_COMPLETE_ENDPOINT, {
@@ -1648,13 +1665,17 @@ async function submitWorkoutCompletion(event) {
       return;
     }
 
-    updateDashboardExpBoost(completedSets, result);
-    renderDashboardStreak(result);
-    await fetchWorkoutHistory();
-    alert(`Training Complete! Checked off ${completedSets}/${totalSets} sets. ${result.new_exp} EXP claimed toward Grade 3 Ascension.`);
-    previousGrade = newGrade;
-    resetRestTimer();
-    navigateView('dashboard-view');
+  updateDashboardExpBoost(completedSets, result);
+        renderDashboardStreak(result);
+        await fetchWorkoutHistory();
+
+        // ⚡ HOOK INTERCEPT: Update dynamic fatigue balance widget on dashboard load
+        renderFatigueMetrics(result);
+
+        alert(`Training Complete! Checked off ${completedSets}/${totalSets} sets. ${result.new_exp} EXP claimed.`);
+        previousGrade = newGrade;
+        resetRestTimer();
+        navigateView('dashboard-view'); 
   } catch (error) {
     console.error('[SHONENFIT] Workout completion network error:', error);
     alert('Could not sync workout completion with the local backend. Make sure app.py is running on http://127.0.0.1:5000.');
@@ -1774,4 +1795,47 @@ window.accessWorkout = accessWorkout;
 window.toggleSet = toggleSet;
 window.toggleRestTimer = toggleRestTimer;
 
-console.log('[SHONENFIT] Live backend application initialized');
+console.log('[SHONENFIT] Live backend application initialized'); 
+
+function renderFatigueMetrics(result) {
+    // Locate the container where dashboard metric widgets live
+    const dashboardContainer = document.querySelector('#dashboard-view .view-container') || document.querySelector('#dashboard-view');
+    if (!dashboardContainer) return;
+
+    // Check if an existing fatigue widget is present; clear it if so to avoid duplicates
+    let fatigueCard = document.getElementById('shonenfit-fatigue-card');
+    if (!fatigueCard) {
+        fatigueCard = document.createElement('div');
+        fatigueCard.id = 'shonenfit-fatigue-card';
+        // Inserting it cleanly as the first overview metric element
+        dashboardContainer.insertBefore(fatigueCard, dashboardContainer.firstChild);
+    }
+
+    // Safeguard values from the result object
+    const ratio = result.fatigue_ratio !== undefined ? result.fatigue_ratio : 0.0;
+    const status = result.fatigue_status || 'Fresh';
+    const message = result.fatigue_message || 'Ready for the next training arc.';
+
+    // Dynamic color styling based on the status score
+    let neonColor = 'var(--accent-primary, #00ffcc)'; // Default teal
+    if (status === 'Warning') neonColor = '#ffcc00'; // Alert yellow
+    if (status === 'Danger') neonColor = '#ff3366';  // Danger red
+
+    fatigueCard.innerHTML = `
+        <div style="background: rgba(20, 20, 30, 0.85); border: 2px solid ${neonColor}; border-radius: 12px; padding: 16px; margin-bottom: 20px; box-shadow: 0 0 15px rgba(${status === 'Danger' ? '255,51,102' : '0,255,204'}, 0.25); color: #ffffff; font-family: inherit;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <h4 style="margin: 0; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 1px;">System Fatigue Analyzer</h4>
+                <span style="background: ${neonColor}; color: #000000; font-weight: 800; padding: 4px 10px; border-radius: 20px; font-size: 0.85rem; text-transform: uppercase;">
+                    ${status}
+                </span>
+            </div>
+            <p style="margin: 0 0 12px 0; font-size: 0.95rem; color: #b3b3cc; line-height: 1.4;">${message}</p>
+            <div style="background: rgba(255,255,255,0.1); border-radius: 6px; height: 10px; width: 100%; overflow: hidden; position: relative;">
+                <div style="background: ${neonColor}; height: 100%; width: ${Math.min(ratio * 100, 100)}%; transition: width 0.4s ease-in-out;"></div>
+            </div>
+            <div style="text-align: right; margin-top: 6px; font-size: 0.8rem; color: #8888aa; font-weight: 600;">
+                Calculated Strain Index: ${(ratio * 100).toFixed(0)}%
+            </div>
+        </div>
+    `;
+} 

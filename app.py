@@ -3,7 +3,8 @@ from flask_cors import CORS
 import sqlite3
 import hashlib
 from datetime import datetime
-
+from database import log_workout_session
+from progression import calculate_fatigue_status 
 # Import both core engines you built
 from generator import generate_custom_routine
 from progression import process_workout_log
@@ -409,24 +410,27 @@ def log_workout():
     """
     API endpoint that pulls a user's current metrics from the database,
     processes them through our progression time-lock and math rules,
-    and updates their row with the newly calculated EXP, streak, and grade.
+    logs granular set histories, and appends a dynamic fatigue status score.
     """
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         username = data.get('username', 'Recruit')
+        incoming_sets = data.get('sets', []) # Captured from the checked frontend items
         
         # 1. Fetch current user metrics from shonenfit.db
         conn = sqlite3.connect(DATABASE_FILE)
-        conn.row_factory = sqlite3.Row  # Access columns by name strings
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
-        user = cursor.execute(
-            'SELECT * FROM user_profiles WHERE username = ? ORDER BY id DESC LIMIT 1', 
+        cursor.execute(
+            'SELECT * FROM user_profiles WHERE username = ? ORDER BY id DESC LIMIT 1',
             (username,)
-        ).fetchone()
+        )
+        user = cursor.fetchone()
         
         if not user:
-            return jsonify({"status": "error", "message": "User profile not found. Complete initialization first!"}), 404
+            conn.close()
+            return jsonify({"status": "error", "message": "User profile not found. Complete initialization first."}), 404
             
         # 2. Extract state metrics to feed to our math logic module
         current_exp = user['total_exp']
@@ -435,22 +439,39 @@ def log_workout():
         weekly_count = user['weekly_workout_count']
         current_streak = user['current_streak_weeks']
         
-        # 3. Process the calculations via progression.py
+        # 3. Process the core level progression calculations
         calc_result = process_workout_log(
             current_exp, current_grade, last_logged_str, weekly_count, current_streak
         )
         
-        # If the 24-hour time lock catches an anti-cheat event, halt and return early
+        # If the 24-hour time lock catches an anti-cheat event, halt immediately
         if calc_result['status'] == 'locked':
             conn.close()
             return jsonify(calc_result), 200
             
-        # 4. Save the calculated metrics back to the user row in the database
+        # 4. Success Pipeline: Save the granular set records to our new table
+        if incoming_sets:
+            log_workout_session(
+                user_id=user['id'],
+                universe=user['selected_universe'],
+                character_name=user['selected_character'],
+                sets_data=incoming_sets
+            )
+            
+        # 5. Compute the real-time Fatigue Engine baseline score
+        fatigue_metrics = calculate_fatigue_status(user['id'])
+        
+        # Inject the live balance metrics safely into our frontend response payload
+        calc_result['fatigue_ratio'] = fatigue_metrics['ratio']
+        calc_result['fatigue_status'] = fatigue_metrics['status']
+        calc_result['fatigue_message'] = fatigue_metrics['message']
+        
+        # 6. Save the calculated metrics back to the user row in the database
         cursor.execute('''
-            UPDATE user_profiles 
-            SET total_exp = ?, 
-                current_grade = ?, 
-                weekly_workout_count = ?, 
+            UPDATE user_profiles
+            SET total_exp = ?,
+                current_grade = ?,
+                weekly_workout_count = ?,
                 last_workout_logged_at = ?
             WHERE id = ?
         ''', (
@@ -468,8 +489,7 @@ def log_workout():
         
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
-
-
+    
 @app.route('/api/workout-complete', methods=['POST'])
 def complete_workout():
     try:
