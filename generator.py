@@ -490,6 +490,33 @@ def generate_custom_routine(profile_data):
     final_filtered_routines = build_routine_items(
         exercises, strategy, age, weight, height, medical_conditions, workout_preferences
     )
+    
+    # ⚡ HOOK INTERCEPT: Fetch current ACWR status from progression engine
+    from progression import calculate_fatigue_status
+    user_id = profile_data.get("user_id") or profile_data.get("id")
+    
+    if user_id:
+        fatigue_data = calculate_fatigue_status(user_id)
+        status = fatigue_data.get("status", "OPTIMAL")
+        
+        # Scale the routine parameters if neural strain is elevated
+        if status in ["HIGH_FATIGUE", "DANGER_ZONE"]:
+            for ex in final_filtered_routines:
+                # Deload target rep numbers dynamically
+                if "8 to 12" in ex["reps"]:
+                    ex["reps"] = "6 to 8 deload reps"
+                elif "12 reps" in ex["reps"]:
+                    ex["reps"] = "8 reps"
+                elif "5 explosive" in ex["reps"]:
+                    ex["reps"] = "3 controlled reps"
+                
+                # Drop target working sets by 1 to manage training volume
+                if ex["sets"] > 2:
+                    ex["sets"] -= 1
+                    
+                # Inject recovery coaching modifiers to the cues
+                ex["coaching_cue"] += " [FATIGUE DELOAD ACTIVE: Focus strictly on form over load]"
+
     focus_directive = TRACK_FOCUS[track_key]
     if age > 40:
         focus_directive += " | Recovery Tip: reduced compound volume for structural recovery."
@@ -501,8 +528,7 @@ def generate_custom_routine(profile_data):
         "daily_track": track_key,
         "weekday_index": current_day,
         "assigned_workout_routine": final_filtered_routines,
-    }
-
+    } 
 
 if __name__ == "__main__":
     test_user_profile = {
