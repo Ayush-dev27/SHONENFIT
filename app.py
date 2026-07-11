@@ -674,8 +674,52 @@ def get_workout_history():
         return jsonify(history), 200
 
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
+        return jsonify({"status": "error", "message": str(e)}), 400 
+
+@app.route('/api/dev/reset-today', methods=['POST'])
+def dev_reset_today():
+    """
+    DEVELOPER UTILITY: Bypasses the training cap and ACWR restrictions by 
+    purging today's training log entries from the local SQLite database.
+    """
+    import sqlite3
+    from datetime import datetime
+    
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    
+    try:
+        conn = sqlite3.connect(DATABASE_FILE)
+        conn.execute('PRAGMA foreign_keys = ON')
+        cursor = conn.cursor()
+        
+        # 1. Clear entries from the detailed workout metrics log table
+        cursor.execute(
+            "DELETE FROM workout_logs WHERE DATE(log_date) = DATE(?)", 
+            (today_str,)
+        )
+        
+        # 2. Clear entries from the high-level summary workout history table
+        # If your timestamp column stores full ISO strings, we use the DATE() modifier
+        cursor.execute(
+            "DELETE FROM workout_history WHERE DATE(timestamp) = DATE(?)", 
+            (today_str,)
+        )
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            "status": "success", 
+            "message": f"Time Chamber activated. Purged all log entries for {today_str}."
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error", 
+            "message": f"Dev reset failed: {str(e)}"
+        }), 500 
 
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000) 
+
