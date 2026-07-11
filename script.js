@@ -1799,7 +1799,7 @@ console.log('[SHONENFIT] Live backend application initialized');
 
 function renderFatigueMetrics(result) {
     // Locate the container where dashboard metric widgets live
-    const dashboardContainer = document.querySelector('#dashboard-view .view-container') || document.querySelector('#dashboard-view');
+    const dashboardContainer = document.querySelector('#dashboard-view .view-container') || document.querySelector('.view-container');
     if (!dashboardContainer) return;
 
     // Check if an existing fatigue widget is present; clear it if so to avoid duplicates
@@ -1818,24 +1818,39 @@ function renderFatigueMetrics(result) {
 
     // Dynamic color styling based on the status score
     let neonColor = 'var(--accent-primary, #00ffcc)'; // Default teal
-    if (status === 'Warning') neonColor = '#ffcc00'; // Alert yellow
-    if (status === 'Danger') neonColor = '#ff3366';  // Danger red
+    if (status === 'Warning') neonColor = '#ffcc00';  // Alert yellow
+    if (status === 'Danger') neonColor = '#ff3366';   // Danger red
+
+    // Calculate target percentage ahead of time
+    const targetPercentage = Math.min(ratio * 100, 100).toFixed(0);
 
     fatigueCard.innerHTML = `
-        <div style="background: rgba(20, 20, 30, 0.85); border: 2px solid ${neonColor}; border-radius: 12px; padding: 16px; margin-bottom: 20px; box-shadow: 0 0 15px rgba(${status === 'Danger' ? '255,51,102' : '0,255,204'}, 0.25); color: #ffffff; font-family: inherit;">
+        <div style="background: rgba(20, 20, 30, 0.85); border: 2px solid ${neonColor}; border-radius: 12px; padding: 16px; margin-bottom: 20px; box-shadow: 0 0 15px rgba(0, 255, 204, 0.25); color: #ffffff; font-family: inherit;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <h4 style="margin: 0; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 1px;">System Fatigue Analyzer</h4>
-                <span style="background: ${neonColor}; color: #000000; font-weight: 800; padding: 4px 10px; border-radius: 20px; font-size: 0.85rem; text-transform: uppercase;">
+                <h4 style="margin: 0; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.05em;">SYSTEM FATIGUE ANALYZER</h4>
+                <span style="background: ${neonColor}; color: #000000; font-weight: 800; padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; box-shadow: 0 0 10px ${neonColor};">
                     ${status}
                 </span>
             </div>
+            
             <p style="margin: 0 0 12px 0; font-size: 0.95rem; color: #b3b3cc; line-height: 1.4;">${message}</p>
-            <div style="background: rgba(255,255,255,0.1); border-radius: 6px; height: 10px; width: 100%; overflow: hidden; position: relative;">
-                <div style="background: ${neonColor}; height: 100%; width: ${Math.min(ratio * 100, 100)}%; transition: width 0.4s ease-in-out;"></div>
+            
+            <div style="background: rgba(255, 255, 255, 0.1); border-radius: 6px; height: 10px; width: 100%; overflow: hidden; position: relative;">
+                <!-- ⚡ ANIMATION INITIAL STATE: Started at 0% with custom curve transition -->
+                <div id="fatigue-bar-filler" style="background: ${neonColor}; height: 100%; width: 0%; transition: width 1.2s cubic-bezier(0.25, 1, 0.5, 1);"></div>
             </div>
+            
             <div style="text-align: right; margin-top: 6px; font-size: 0.8rem; color: #8888aa; font-weight: 600;">
-                Calculated Strain Index: ${(ratio * 100).toFixed(0)}%
+                Calculated Strain Index: ${targetPercentage}%
             </div>
         </div>
     `;
+
+    // ⚡ TRIGGER SURGE EFFECT: Let the DOM paint the 0% state, then slide it out to the target!
+    setTimeout(() => {
+        const fillerBar = document.getElementById('fatigue-bar-filler');
+        if (fillerBar) {
+            fillerBar.style.width = `${targetPercentage}%`;
+        }
+    }, 50);
 } 
