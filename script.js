@@ -22,6 +22,41 @@ const DEFAULT_PROFILE_VALUES = {
   strategyGoal: 'train-like',
 };
 
+function calculateGradeProgress(totalExp) {
+    const thresholds = [
+        { name: "Special Grade", minExp: 10000 },
+        { name: "Grade 1",      minExp: 6000  },
+        { name: "Grade 2",      minExp: 3000  },
+        { name: "Grade 3",      minExp: 1000  },
+        { name: "Grade 4",      minExp: 0     }
+    ];
+
+    let currentTierIndex = thresholds.findIndex(t => totalExp >= t.minExp);
+    let currentTier = thresholds[currentTierIndex];
+    
+    if (currentTier.name === "Special Grade") {
+        return {
+            grade: currentTier.name,
+            currentExpInTier: totalExp - currentTier.minExp,
+            expNeededForNextTier: 0,
+            progressPercentage: 100
+        };
+    }
+
+    let nextTier = thresholds[currentTierIndex - 1];
+    let tierRange = nextTier.minExp - currentTier.minExp;
+    let currentExpInTier = totalExp - currentTier.minExp;
+    let expNeededForNextTier = nextTier.minExp - totalExp;
+    let progressPercentage = Math.min((currentExpInTier / tierRange) * 100, 100);
+
+    return {
+        grade: currentTier.name,
+        currentExpInTier: currentExpInTier,
+        expNeededForNextTier: expNeededForNextTier,
+        progressPercentage: Math.round(progressPercentage)
+    };
+} 
+
 const appState = {
   selectedUniverse: null,
   selectedCharacter: null,
@@ -34,7 +69,8 @@ const appState = {
     height: null,
     weight: null,
     medicalHistory: null,
-    preferences: null,
+    preferences: null, 
+    totalExp: 0
   },
 };
 
@@ -374,14 +410,15 @@ function handleAuthSuccess(result = {}, submittedPayload = {}, mode = 'login') {
   const hasSavedPathSelection = hasActivePathSelection(profileData);
 
   if (submittedPayload.age || profileData.age) {
-    appState.userMetrics = {
-      age: submittedPayload.age || profileData.age || null,
-      height: submittedPayload.height || profileData.height || null,
-      weight: submittedPayload.weight || profileData.weight || null,
-      medicalHistory: profileData.medical_history || null,
-      preferences: profileData.special_preferences || null,
-    };
-  }
+        appState.userMetrics = {
+            age: submittedPayload.age || profileData.age || null,
+            height: submittedPayload.height || profileData.height || null,
+            weight: submittedPayload.weight || profileData.weight || null,
+            medicalHistory: profileData.medical_history || null,
+            preferences: profileData.special_preferences || null,
+            totalExp: profileData.total_exp || profileData.totalExp || profileData.new_exp || 0
+        };
+    } 
 
   if (!hasSavedPathSelection) {
     navigateView('universe-view');
@@ -393,8 +430,12 @@ function handleAuthSuccess(result = {}, submittedPayload = {}, mode = 'login') {
     renderDashboardSummary(workoutData);
   }
 
-  previousGrade = result.current_grade || profileData.current_grade || previousGrade;
-  applyRankBadgeState(previousGrade);
+  // Calculate full Shonen metrics using the loaded database EXP values
+        const currentTotalExp = appState.userMetrics.totalExp || 0;
+        const initialProgress = calculateGradeProgress(currentTotalExp);
+
+        previousGrade = initialProgress.grade;
+        applyRankBadgeState(initialProgress.grade); 
   renderDashboardStreak(result.current_streak !== undefined ? result : profileData);
   fetchWorkoutHistory();
   navigateView('dashboard-view');
@@ -1404,14 +1445,44 @@ function normalizeGradeClass(grade) {
 }
 
 function applyRankBadgeState(grade) {
-  const rankBadge = document.getElementById('rank-badge-display');
-  if (!rankBadge) {
-    return;
-  }
+    const rankBadge = document.getElementById('rank-badge-display');
+    if (!rankBadge) return;
 
-  rankBadge.classList.remove('grade-4', 'grade-3', 'grade-2', 'grade-1', 'special-grade');
-  rankBadge.classList.add(normalizeGradeClass(grade));
-}
+    // 1. Clear old rank classes safely
+    rankBadge.classList.remove('grade-4', 'grade-3', 'grade-2', 'grade-1', 'special-grade');
+    
+    // 2. Add the new class so the CSS can draw the text layout automatically
+    const cleanGrade = grade.trim();
+    const formattedClass = cleanGrade.toLowerCase().replace(' ', '-');
+    rankBadge.classList.add(formattedClass);
+
+    // 3. Update the descriptive milestone metrics text below the badge
+    const statusNotice = document.querySelector('.status-notice');
+    if (statusNotice && appState && appState.userMetrics) {
+        // Fallback to 0 if the backend hasn't filled the property yet on rapid boot
+        const currentExp = appState.userMetrics.totalExp || 0; 
+        const metrics = calculateGradeProgress(currentExp);
+        
+        if (metrics.grade === "Special Grade") {
+            statusNotice.textContent = `Maximum Rank achieved! Current EXP: ${currentExp}`;
+        } else {
+            statusNotice.textContent = `${metrics.currentExpInTier} EXP in tier. ${metrics.expNeededForNextTier} EXP to next grade (${metrics.progressPercentage}% complete).`;
+        }
+    }
+} 
+
+    // 3. Update the descriptive milestone metrics text below the badge
+    const statusNotice = rankBadge.nextElementSibling || document.querySelector('.status-notice');
+    if (statusNotice && appState.userMetrics.totalExp !== undefined) {
+        const metrics = calculateGradeProgress(appState.userMetrics.totalExp);
+        
+        if (metrics.grade === "Special Grade") {
+            statusNotice.textContent = `Maximum Rank achieved! Current EXP: ${appState.userMetrics.totalExp}`;
+        } else {
+            statusNotice.textContent = `${metrics.currentExpInTier} EXP in tier. ${metrics.expNeededForNextTier} EXP to next grade (${metrics.progressPercentage}% complete).`;
+        }
+    }
+
 
 function wireAscensionOverlayControls() {
   const claimButton = document.getElementById('claim-new-power-btn');
@@ -1617,7 +1688,7 @@ function showRestDayMotivationBanner() {
   }, 6500);
 }
 
-async function submitWorkoutCompletion(event) {
+async function submitWorkoutCompletion(event) { 
   event?.preventDefault();
   event?.stopPropagation();
   await unlockTimerAudioContext();
@@ -1659,20 +1730,34 @@ async function submitWorkoutCompletion(event) {
       return;
     }
 
-    const newGrade = result.current_grade || previousGrade;
+    // 1. Capture the new EXP from the backend and sync it into our global state
+        if (result.new_exp !== undefined) {
+            appState.userMetrics.totalExp = result.new_exp;
+        }
 
-    if (newGrade !== previousGrade && launchAscensionOverlay(newGrade, completedSets, result)) {
-      return;
-    }
+        // 2. Feed the total EXP to our math module to get the current rank specs
+        const progression = calculateGradeProgress(appState.userMetrics.totalExp);
+        
+        // 3. Fallback check for grades to handle the existing ascension overlays
+        const newGrade = progression.grade || result.current_grade || previousGrade;
 
-  updateDashboardExpBoost(completedSets, result);
+        if (newGrade !== previousGrade && launchAscensionOverlay(newGrade, completedSets, result)) {
+            previousGrade = newGrade;
+            return;
+        }
+
+        // 4. Fire existing updates
+        updateDashboardExpBoost(completedSets, result);
         renderDashboardStreak(result);
         await fetchWorkoutHistory();
 
         // ⚡ HOOK INTERCEPT: Update dynamic fatigue balance widget on dashboard load
-        renderFatigueMetrics(result);
+        renderFatigueMetrics(result); 
+        // Refresh the rank visual elements and update current tier progress badges
+        applyRankBadgeState(progression.grade); 
 
-        alert(`Training Complete! Checked off ${completedSets}/${totalSets} sets. ${result.new_exp} EXP claimed.`);
+        // 5. Success cleanup and routing
+        alert(`Training Complete! Checked off ${completedSets}/${totalSets} sets. Gained ${result.exp_gained || 250} EXP! Current Tier: ${progression.grade}`);
         previousGrade = newGrade;
         resetRestTimer();
         navigateView('dashboard-view'); 
