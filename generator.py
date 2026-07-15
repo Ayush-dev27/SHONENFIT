@@ -80,18 +80,63 @@ CHARACTER_TEMPLATES = {
     },
     "tengen": {
         "physique": {
-            "track_a": ["Dumbbell Lateral Raises (High Volume)", "Incline Barbell Bench Press", "Barbell Bicep Curls", "Cable Flyes"],
-            "track_b": ["Dumbbell Shrugs", "Goblet Squats", "Weighted Sit-Ups", "Farmer's Walks"],
-            "track_c": ["Assault Bike Sprints", "Sledgehammer Tire Slams", "Renegade Rows", "Jump Rope Tempo Sets"],
-            "recovery": ["Shoulder Flush Circuit", "Easy Bike Ride", "Forearm Mobility", "Box Breathing"],
+            "track_a": [
+                "Incline Dumbbell Press (4 sets x 8-10 reps)",
+                "Flat Barbell Bench Press (3 sets x 8-12 reps)",
+                "Chest-Supported T-Bar Row (3 sets x 10-12 reps)",
+                "SUPERSET: DB Hammer Curls + Overhead Ext (4 sets x 10/12 reps)",
+                "Cable Bicep Curls (3 sets x 12-15 reps | Last set Drop-Set)"
+            ],
+            "track_b": [
+                "Seated Dumbbell Shoulder Press (4 sets x 8-10 reps)",
+                "Incline Smith Machine Press (3 sets x 10-12 reps)",
+                "Dumbbell Lateral Raises (4 sets x 12-15 reps | Strict Form)",
+                "Cable Pec Flyes (3 sets x 12-15 reps | Deep Stretch)",
+                "Tricep Rope Pushdowns (4 sets x 12-15 reps | 1s Hold)"
+            ],
+            "track_c": [
+                "THE TENGEN SPECIAL: Barbell Bicep Curls (4 sets x 8-10 reps)",
+                "EZ-Bar Skull Crushers (4 sets x 10-12 reps)",
+                "SUPERSET: Cable Lat Raises + Behind-Back Wrist Curls (4 sets x 15/20 reps)",
+                "Dumbbell Incline Hammer Curls (3 sets x 12 reps)",
+                "Tricep Overhead Cable Extensions (3 sets x 12-15 reps)"
+            ],
+            "recovery": [
+                "Deep Full-Body Muscle Stretching & Joint Decompression",
+                "Mobility Arc Recovery Drill",
+                "Diaphragmatic Breathing Rhythm Cycle"
+            ]
         },
         "train-like": {
-            "track_a": ["Explosive Push-Ups (Clapping)", "Dumbbell Renegade Rows", "Kettlebell Push Press", "Heavy Rope Pulls"],
-            "track_b": ["Heavy Farmer's Walks", "Trap Bar Deadlifts", "Hanging Knee Raises", "Lateral Bounds"],
-            "track_c": ["Sledgehammer Tire Slams", "Assault Bike Sprints", "Battle Rope Waves", "Cone Cut Drills"],
-            "recovery": ["Grip Recovery Flow", "Mobility Walk", "Upper Back Release", "Nasal Breathing Reset"],
-        },
-    },
+            "track_a": [
+                "Power Cleans (4 sets x 3-5 reps | 2-3 min rest)",
+                "Med Ball Rotational Slams (4 sets x 8 reps per side)",
+                "Landmine Press & Pivot (3 sets x 8 reps per side)",
+                "Weighted Pull-Ups (4 sets x 6 reps | Heavy Pulling)",
+                "Pallof Press (3 sets x 12 reps per side | Core Stability)"
+            ],
+            "track_b": [
+                "Front Squats (4 sets x 5 reps | High Core Demand)",
+                "Heavy Farmer’s Walks (4 rounds x 40 meters | Grip Focus)",
+                "Kettlebell Swings (3 sets x 15 reps | Posterior Snap)",
+                "Z Press - Seated on Floor (3 sets x 8 reps | Pure Shoulders)",
+                "Hanging Leg Raises with a Twist (3 sets x 12 reps)"
+            ],
+            "track_c": [
+                "SHINOBI SPEED DRILLS: 40m Max-Effort Sprints (6-8 rounds)",
+                "Depth Jumps into Broad Jump (4 sets x 5 reps | Explosive)",
+                "Lateral Box Jumps (3 sets x 8 reps per side)",
+                "Single-Leg Bounds (3 sets x 15 yards per leg)",
+                "Med Ball Overhead Backward Throws (4 sets x 5 reps)"
+            ],
+            "recovery": [
+                "Light Yoga Flow & Joint Decompression (20-30 min)",
+                "Deep Shinobi Stretching (Hamstrings, Hip Flexors, Calves)",
+                "Tactical Stance Work & Flow Recovery Drill"
+            ]
+        } 
+    }, 
+        
     "inosuke": {
         "physique": {
             "track_a": ["Pull-Ups (Wide Grip)", "Decline Dumbbell Bench Press", "Cable Rows", "Hindu Push-Ups"],

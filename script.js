@@ -827,11 +827,33 @@ function renderDashboardSummary(workoutData) {
   routineList.className = 'exercise-list';
 
   routine.forEach((exercise) => {
-    const item = document.createElement('li');
-    item.textContent = `${exercise.name} - ${exercise.sets || 4} sets x ${exercise.reps || 'controlled reps'}`;
-    routineList.appendChild(item);
-  });
+        const item = document.createElement('li');
+        
+        // 1. Extract the name safely whether it's an object or raw string
+        const exerciseName = (typeof exercise === 'string') ? exercise : (exercise.name || '');
+        
+        // 2. Recovery check keywords
+        const recoveryKeywords = ['stretching', 'drill', 'breathing', 'decompression', 'mobility', 'rest'];
+        const isRecoveryMove = recoveryKeywords.some(keyword => exerciseName.toLowerCase().includes(keyword));
+        
+        // 3. Check if the backend name already has custom sets/reps inside parentheses
+        const hasCustomFormatting = exerciseName.includes('(') || exerciseName.includes(':');
 
+        // 4. Clean Render flow
+        if (isRecoveryMove || hasCustomFormatting || typeof exercise === 'string') {
+            // Let your custom layout strings pass through completely untouched
+            item.textContent = exerciseName;
+        } else if (exercise && exercise.name) {
+            // Standard fallback view
+            const sets = exercise.sets || 4;
+            const reps = exercise.reps || '8 to 12 reps';
+            item.textContent = `${exercise.name} - ${sets} sets x ${reps}`;
+        } else {
+            item.textContent = 'Unknown Exercise Directive';
+        }
+        
+        routineList.appendChild(item);
+    }); 
   routineContainer.appendChild(routineList);
   summaryBox.appendChild(routineContainer);
   return true;
