@@ -66,11 +66,44 @@ CHARACTER_TEMPLATES = {
     },
     "tanjiro": {
         "physique": {
-            "track_a": ["Barbell Rows", "Overhead Press", "Incline Push-Ups", "Face Pulls"],
-            "track_b": ["Front Squats", "Calf Raises", "Ab Wheel Rollouts", "Split Squats"],
-            "track_c": ["Dumbbell Thrusters", "Sprint Intervals (400m)", "Plank-to-Pushups", "Kettlebell Slashes"],
-            "recovery": ["Total Concentration Breathing Walk", "Ankle Mobility", "Thoracic Rotations", "Easy Cycling"],
-        },
+            "track_a": [
+                "Deadlifts (3 sets x 5 reps | Raw Power)",
+                "Weighted Pull-Ups (4 sets x 6-8 reps)",
+                "Towel Pull-Ups (3 sets x AMRAP | Grip Focus)",
+                "Behind-Back Barbell Wrist Curls (4 sets x 15 reps)",
+                "Plate Pinches (3 sets x Max Time Hold)"
+            ],
+            "track_b": [
+                "Barbell Front or Goblet Squats (4 sets x 10-12 reps)",
+                "Walking Lunges (3 sets x 20 steps total)",
+                "Standing Calf Raises (5 sets x 20-25 reps | 2s Hold)",
+                "Jump Squats (3 sets x 15 reps | Explosive Leg Power)"
+            ],
+            "track_c": [
+                "Weighted Push-Ups (4 sets x 10-12 reps)",
+                "Overhead Dumbbell Press (3 sets x 8-10 reps)",
+                "Dip Station Dips (3 sets x 10-12 reps)",
+                "Hanging Leg Raises (4 sets x 12-15 reps | Controlled)",
+                "Ab Wheel Rollouts (3 sets x 10 reps)"
+            ],
+            "track_d": [
+                "SHRED CIRCUIT: 4 Rounds (Rest 60s between rounds)",
+                "Pull-Ups (10 reps) + Clapping Push-Ups (12 reps)",
+                "Fast Bodyweight Squats (20 reps) + Knee Tucks (15 reps)",
+                "Burpees Finisher (10 reps)"
+            ],
+            "track_e": [
+                "CHARCOAL CARRIER: Heavy Farmer's Walks (4 rounds x 50m)",
+                "Zercher Carries - Sandbag or Barbell (3 rounds x 30m)",
+                "Weighted Russian Twists (3 sets x 20 reps per side)",
+                "Plank with Protraction (3 sets x 60s Hold | Serratus Focus)"
+            ],
+            "recovery": [
+                "Deep Lower Body Stretching (Hamstrings, Hip Flexors, Calves)",
+                "Thoracic Spine & Shoulder Mobility Flow (20 min)",
+                "Active Recovery Walk & Breathwork Station"
+            ]
+        }, 
         "train-like": {
             "track_a": ["Breath-Control Push-Ups", "Barbell Rows", "Dumbbell Thrusters", "Band Pull-Aparts"],
             "track_b": ["Front Squats", "Walking Lunges", "Rotational Core Chops", "Calf Spring Sets"],
