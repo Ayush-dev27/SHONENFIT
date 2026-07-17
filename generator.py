@@ -105,11 +105,44 @@ CHARACTER_TEMPLATES = {
             ]
         }, 
         "train-like": {
-            "track_a": ["Breath-Control Push-Ups", "Barbell Rows", "Dumbbell Thrusters", "Band Pull-Aparts"],
-            "track_b": ["Front Squats", "Walking Lunges", "Rotational Core Chops", "Calf Spring Sets"],
-            "track_c": ["High-Intensity Kettlebell Slashes", "Sprint Intervals (400m)", "Burpees", "Footwork Ladder Drills"],
-            "recovery": ["Breathing Cadence Flow", "Long Walk", "Hip Mobility", "Low-Intensity Core Holds"],
-        },
+            "track_a": [
+                "TOTAL CONCENTRATION: Box Breathing Warm-Up (5 min)",
+                "Hindu Push-Ups (4 sets x 15-20 reps | Fluid Spine Power)",
+                "Dead-stop Pull-Ups (4 sets x 8-12 reps | Full Extension)",
+                "Parallel Bar Dips (3 sets x 15 reps)",
+                "Hollow Body Holds (4 sets x 45s | Midsection Rigidity)"
+            ],
+            "track_b": [
+                "MOUNTAIN AGILITY: Footwork Drills (15 min Non-Stop)",
+                "Suicide Sprints - 30yd Shuttle (5 rounds | Low Center)",
+                "Single-Leg Balance Ball Toss (3 sets x 1 min per leg)",
+                "Lateral Bounds / Skater Hops (4 sets x 20 total reps)"
+            ],
+            "track_c": [
+                "CONSTANT STAMINA: Incline Run or Stair Climb (45-60 min)",
+                "THE RULE: Strict Nasal-Only Breathing (Build CO2 Tolerance)"
+            ],
+            "track_d": [
+                "HINDU SQUATS: Rhythmic Bodyweight (4 sets x 30-40 reps)",
+                "Jump Squats / Power Jumps (3 sets x 15 reps | Explosive Hip)",
+                "Walking Lunges (4 sets x 24 steps total | Endurance)",
+                "Towel Dead-Hangs (3 sets x Max Time | Sword Retention Grip)"
+            ],
+            "track_e": [
+                "WEAPON FLOW: Overhead Slashes (200 reps | 4 sets of 50)",
+                "WEAPON FLOW: Diagonal Slashes (200 reps | Core Rotational)",
+                "Reflex Ball Headband Kit Training (10-15 min Continuous)"
+            ],
+            "track_f": [
+                "FINAL SELECTION CIRCUIT: 4-5 Rounds (90s Rest between rounds)",
+                "400m Run + 15 Burpees + 20 Mountain Climbers",
+                "15 Push-Ups + 15 Jump Squats"
+            ],
+            "recovery": [
+                "Diaphragmatic Breathing Meditation & Belly Control (10 min)",
+                "Full-Body Flexibility Flow - T-Spine, Hips, Hamstrings (30 min)"
+            ]
+        } 
     },
     "tengen": {
         "physique": {
