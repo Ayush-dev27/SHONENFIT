@@ -205,11 +205,53 @@ CHARACTER_TEMPLATES = {
         
     "inosuke": {
         "physique": {
-            "track_a": ["Pull-Ups (Wide Grip)", "Decline Dumbbell Bench Press", "Cable Rows", "Hindu Push-Ups"],
-            "track_b": ["Walking Lunges", "Hanging Toes-to-Bar", "Russian Twists", "Deep Cossack Squats"],
-            "track_c": ["Bear Crawls (Timed)", "Kettlebell Windmills", "Burpee Broad Jumps", "Animal Flow Transitions"],
-            "recovery": ["Deep Mobility Flow", "Easy Trail Walk", "Spinal Wave Drills", "Breathing Holds"],
-        },
+            "track_a": [
+                "Incline Dumbbell Bench Press (4 sets x 8-10 reps | 2 min rest)",
+                "Flat Barbell Bench Press (3 sets x 8-12 reps)",
+                "Standing Overhead Barbell Press - OHP (3 sets x 8 reps)",
+                "High-to-Low Cable Pec Flyes (4 sets x 12-15 reps | Sharp Pec Line)",
+                "Dumbbell Lateral Raises (4 sets x 15 reps | Pump Focus)"
+            ],
+            "track_b": [
+                "Heavy Barbell Shrugs (4 sets x 10-12 reps | 1s Trap Hold)",
+                "Overhand Barbell Rows (4 sets x 8-10 reps)",
+                "Chest-Supported Dumbbell Rows (3 sets x 12 reps | Deep Squeeze)",
+                "Neutral Grip Lat Pulldown (3 sets x 10-12 reps)",
+                "Face Pulls (4 sets x 15-20 reps | Rear Delt Health)"
+            ],
+            "track_c": [
+                "BEAST MIDSECTION: Weighted Russian Twists (4 sets x 20 reps per side)",
+                "Hanging Leg Raises (4 sets x 12-15 reps | Controlled)",
+                "Ab Wheel Rollouts or Planks (3 sets x Max Effort)",
+                "SUPERSET: Barbell Bicep Curls (4x10) + Cable Tricep Extensions (4x12)",
+                "Hammer Curls (3 sets x 12 reps | Thick Forearms)"
+            ],
+            "track_d": [
+                "Weighted Dips (4 sets x 8-10 reps | Lower Pec Focus)",
+                "Dumbbell Incline Flyes (3 sets x 12 reps)",
+                "Seated Dumbbell Shoulder Press (3 sets x 10 reps)",
+                "Cable Lateral Raises (4 sets x 15 reps | Constant Tension)",
+                "Push-Ups Finisher (3 sets x AMRAP | Maximum Flush)"
+            ],
+            "track_e": [
+                "Wide-Grip Pull-Ups (4 sets x 8-12 reps | Back Width)",
+                "Single-Arm Dumbbell Row (3 sets x 10 reps per arm)",
+                "Dumbbell Shrugs with Forward Lean (3 sets x 15 reps)",
+                "Reverse Dumbbell Flyes (4 sets x 15 reps | Rear Delts)",
+                "Incline Dumbbell Curls (3 sets x 12 reps)"
+            ],
+            "track_f": [
+                "DYNAMIC OBLIQUES: Hanging Knee Raises with Side Twist (4x12 per side)",
+                "Cable Woodchoppers (3 sets x 15 reps per side)",
+                "Behind-the-Back Wrist Curls (4 sets x 15-20 reps | Vascular Forearms)",
+                "Standing Calf Raises (5 sets x 20 reps | Slow Tempo)"
+            ],
+            "recovery": [
+                "INOSUKE FLEXIBILITY: Deep Static Stretching Flow (20-30 min)",
+                "Spine Decompression, Hip Openers, & Shoulder Mobility Flow"
+            ]
+        }, 
+        
         "train-like": {
             "track_a": ["Hindu Push-Ups", "Wide-Grip Pull-Ups", "Crawl-to-Push Combos", "Primal Rows"],
             "track_b": ["Deep Cossack Squats", "Kettlebell Windmills", "Walking Lunges", "Core Twist Holds"],
