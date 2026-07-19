@@ -833,7 +833,8 @@ function renderDashboardSummary(workoutData) {
         const exerciseName = (typeof exercise === 'string') ? exercise : (exercise.name || '');
         
         // 2. Recovery check keywords
-        const recoveryKeywords = ['stretching', 'drill', 'breathing', 'decompression', 'mobility', 'rest'];
+        // 2. Recovery check keywords (added 'recovery' and 'foam')
+        const recoveryKeywords = ['stretching', 'drill', 'breathing', 'decompression', 'mobility', 'rest', 'recovery', 'foam']; 
         const isRecoveryMove = recoveryKeywords.some(keyword => exerciseName.toLowerCase().includes(keyword));
         
         // 3. Check if the backend name already has custom sets/reps inside parentheses

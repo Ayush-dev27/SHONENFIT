@@ -253,11 +253,45 @@ CHARACTER_TEMPLATES = {
         }, 
         
         "train-like": {
-            "track_a": ["Hindu Push-Ups", "Wide-Grip Pull-Ups", "Crawl-to-Push Combos", "Primal Rows"],
-            "track_b": ["Deep Cossack Squats", "Kettlebell Windmills", "Walking Lunges", "Core Twist Holds"],
-            "track_c": ["Bear Crawls (Timed)", "Burpee Broad Jumps", "Quadruped Flow", "Shuttle Crawls"],
-            "recovery": ["Animal Mobility Reset", "Joint Circles", "Low Heart-Rate Walk", "Diaphragm Breathing"],
-        },
+            "track_a": [
+                "PRIMAL LOCOMOTION: Bear Crawls (4 rounds x 30m | Low Hips)",
+                "Crab Walks (3 rounds x 20m | Shoulder & Hip Focus)",
+                "Frogger Hops - Lateral & Forward (3 sets x 15 reps)",
+                "Directional Reactive Sprints (6 rounds x 20m | Instantly Adjust)"
+            ],
+            "track_b": [
+                "HYPER-MOBILITY: Bridge Wall Walks (3 sets x 4-6 reps)",
+                "Deep Cossack Squats (3 sets x 10 reps per side | Deep Sink)",
+                "Skin-the-Cat on Gymnastic Rings (3 sets x 5 reps | Shoulder Mobility)",
+                "Active Floor Spine Decompression & Twists (10 min Continuous)"
+            ],
+            "track_c": [
+                "BEAST STRIKING: Med Ball Rotational Throws (4 sets x 8 reps per side)",
+                "Landmine Rainbows / Twists (3 sets x 10 reps total | Core Torque)",
+                "Kettlebell Windmills (3 sets x 5 reps per side | Deep Obliques)",
+                "Sledgehammer Tire Slams or Mace Swings (4 sets x 1 min Continuous)"
+            ],
+            "track_d": [
+                "MULTI-PLANAR STRENGTH: Sandbag Cleans & Throws (4 sets x 6 reps)",
+                "Heavy Farmer's Walks with Fat Grips (4 rounds x 40m | Wild Grip)",
+                "Alternating Commando Grip Pull-Ups (4 sets x AMRAP)",
+                "Zercher Squats - Barbell or Object (3 sets x 8 reps | Core Bracing)"
+            ],
+            "track_e": [
+                "SPATIAL PERCEPTION: Low-Stance Shadow Sparring (20 min Dual Flow)",
+                "Tennis Ball Blind-Drop Drill (10 min Auditory Perception Focus)",
+                "Sprawl Drills to Low Athletic Stance (3 sets x 1 min)"
+            ],
+            "track_f": [
+                "MOUNT FUJIKASANE CIRCUIT: 4 Brutal Rounds (2 min Rest between rounds)",
+                "20m Fast Bear Crawl + 10 Sandbag Ground-to-Overhead",
+                "15 Bodyweight Jump Squats + 50m Full Out Sprint"
+            ],
+            "recovery": [
+                "Passive Stretching Flow - Long 2 min Holds (30 min)",
+                "Deep Oblique, Lat, & Forearm Tissue Recovery Foam Roll"
+            ]
+        } 
     },
     "deku": {
         "physique": {
