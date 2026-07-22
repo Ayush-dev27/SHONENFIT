@@ -38,10 +38,45 @@ CHARACTER_TEMPLATES = {
     },
     "itadori": {
         "physique": {
-            "track_a": ["Weighted Dips", "Barbell Bent Over Rows", "Hammer Curls", "Push-Up Volume Sets"],
-            "track_b": ["Barbell Back Squats", "Walking Lunges", "Ab Wheel Rollouts", "Calf Raises"],
-            "track_c": ["Burpee Pull-Ups", "Jump Rope Intervals", "Medicine Ball Throws", "Plank Shoulder Taps"],
-            "recovery": ["Low-Impact Cardio", "Hip Flexor Mobility", "Shoulder CARs", "Box Breathing"],
+            "track_a": [
+                "Barbell Back Squats (4 sets x 8-10 reps | Deep ROM)",
+                "Leg Press - Low Foot Placement (3 sets x 10-12 reps | Quad Teardrop)",
+                "Walking Dumbbell Lunges (3 sets x 12 steps per leg)",
+                "Standing Calf Raises (4 sets x 15-20 reps | 1s Hold)",
+                "Hanging Leg Raises (4 sets x 12-15 reps)"
+            ],
+            "track_b": [
+                "Incline Dumbbell Press (4 sets x 8-10 reps | Upper Chest Fill)",
+                "Standing Dumbbell Shoulder Press (3 sets x 8-10 reps)",
+                "Cable Pec Flyes (3 sets x 12-15 reps | Squeeze Center)",
+                "Dumbbell Lateral Raises (4 sets x 15 reps | Strict Control)",
+                "Ab Wheel Rollouts (3 sets x 10-12 reps | Core Bracing)"
+            ],
+            "track_c": [
+                "Weighted Pull-Ups (4 sets x 6-8 reps | V-Taper Lats)",
+                "Barbell or T-Bar Rows (3 sets x 8-10 reps | Mid-Back Thickness)",
+                "Neutral Grip Lat Pulldowns (3 sets x 12 reps)",
+                "Incline Dumbbell Curls (3 sets x 10-12 reps)",
+                "High-to-Low Cable Woodchoppers (3 sets x 15 per side | Serratus Focus)"
+            ],
+            "track_d": [
+                "Romanian Deadlifts - RDLs (4 sets x 8-10 reps | Hamstring Stretch)",
+                "Bulgarian Split Squats (3 sets x 10 reps per leg | Unilateral Balance)",
+                "Lying Leg Curls (3 sets x 12-15 reps)",
+                "Seated Calf Raises (4 sets x 15 reps)",
+                "Weighted Decline Bench Crunches (3 sets x 15 reps)"
+            ],
+            "track_e": [
+                "SUPERSET: Barbell Bicep Curls (4x10) + EZ-Bar Skull Crushers (4x10)",
+                "Cable Lateral Raises (4 sets x 15 reps | Capped Delts)",
+                "Incline Hammer Curls (3 sets x 12 reps)",
+                "Tricep Rope Pushdowns (3 sets x 12-15 reps)",
+                "Hanging Knee Raises with Twist (4 sets x 15 reps | Lower Abs)"
+            ],
+            "recovery": [
+                "ITADORI ATHLETIC FLOW: Deep Hip Flexor & Glute Opening (20 min)",
+                "Full-Body Hamstring, T-Spine, & Ankle Mobility Session"
+            ]
         },
         "train-like": {
             "track_a": ["Power Push-Ups", "Sandbag Bear-Hug Carries", "Explosive Rows", "Medicine Ball Chest Passes"],
