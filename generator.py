@@ -6,14 +6,17 @@ TRACK_FOCUS = {
     "track_a": "Upper Body Kinetic Thickness / Push-Pull",
     "track_b": "Lower Body Athletic Base / Core Apex",
     "track_c": "Active Mobility / Functional Conditioning Recovery Station",
-    "recovery": "Full Recovery System Rest Arc",
-}
+    "track_d": "Unilateral Power & Lower Body Bulletproofing",
+    "track_e": "High-Velocity Speed & Explosive Plyometrics",
+    "track_f": "Full-Body Combat Circuit & Anaerobic Conditioning",
+    "recovery": "Full Recovery System Rest Arc"
+} 
 
 TRACK_BY_WEEKDAY = {
     0: "track_a",
     1: "track_b",
     2: "track_c",
-    3: "track_a",
+    3: "track_d",
     4: "track_b",
     5: "track_c",
     6: "recovery",
@@ -79,11 +82,47 @@ CHARACTER_TEMPLATES = {
             ]
         },
         "train-like": {
-            "track_a": ["Power Push-Ups", "Sandbag Bear-Hug Carries", "Explosive Rows", "Medicine Ball Chest Passes"],
-            "track_b": ["Power Cleans", "Plyometric Knee-to-Chest Jumps", "Heavy Sandbag Carries", "Core Impact Holds"],
-            "track_c": ["Medicine Ball Underhand Throws", "Burpee Pull-Ups", "Sprint Starts", "Reaction Footwork"],
-            "recovery": ["Shadowboxing Flow", "Easy Bike Intervals", "Spinal Decompression", "Breathing Cadence Work"],
-        },
+            "track_a": [ # Day 0 - Monday
+                "BLACK FLASH POWER: Power Cleans or Trap Bar Jump Shrugs (4x3-5)",
+                "Med Ball Rotational Wall Slams (4 sets x 6 reps per side)",
+                "Landmine Punch Presses (4 sets x 6 reps per arm | Punching Drive)",
+                "Weighted Pull-Ups (4 sets x 5 reps | Recoil Absorbing)",
+                "Pallof Press Hold (3 sets x 30s per side | Anti-Rotation)"
+            ],
+            "track_b": [ # Day 1 - Tuesday
+                "SPEED & LEAPING: Max Effort 30m Sprints (5-6 rounds | 2 min rest)",
+                "Depth Jumps to Vertical Jump (4 sets x 4 reps | Explosive)",
+                "Broad Jumps for Distance (3 sets x 5 max-distance jumps)",
+                "Single-Leg Box Jumps (3 sets x 5 reps per leg | Unilateral)",
+                "Med Ball Overhead Backward Throws (4 sets x 5 reps)"
+            ],
+            "track_c": [ # Day 2 - Wednesday
+                "MARTIAL FLOW: Shadowboxing & Level Change Footwork (15 min)",
+                "Heavy Bag Striking Intervals (5 rounds x 3 min | Combos)",
+                "Flying / Clinch Knee Strikes on Bag (4 sets x 10 reps per leg)",
+                "Head Movement & Slip-Bag Reflex Drills (10 min)"
+            ],
+            "track_d": [ # Day 3 - Thursday (REST DAY RESTORATION)
+                "ITADORI ATHLETIC MOBILITY: Deep Hip & Ankle Flow (20-30 min)",
+                "Thoracic Spine, Hamstrings, & Hip Flexor Opening Protocol"
+            ],
+            "track_e": [ # Day 4 - Friday 
+                "JOINT ARMOR: Barbell Front Squats (4 sets x 5 reps | Quad Power)",
+                "Explosive Bulgarian Split Squats (3 sets x 6 reps per leg)",
+                "Romanian Deadlifts - RDLs (4 sets x 8 reps | Posterior Chain)",
+                "Heavy Farmer's Walks (4 rounds x 30m | Grip & Stability)",
+                "Tibialis & Calf Raises (3 sets x 15 reps | Knee Bulletproofing)"
+            ],
+            "track_f": [ # Day 5 - Saturday
+                "CURSE ENERGY CIRCUIT: 4 Rounds Fast (90s Rest between rounds)",
+                "10 Kettlebell Cleans to Press + 15 Plyo Clapping Push-Ups",
+                "10 Heavy Med Ball Slams + 12 Box Jumps + 100m Sprint"
+            ],
+            "recovery": [ # Day 6 - Sunday
+                "Full Recovery System Rest Arc & CNS Reset",
+                "Deep Muscle Tissue Decompression Flow"
+            ]
+        } 
     },
     "maki": {
         "physique": {
