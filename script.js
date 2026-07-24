@@ -743,9 +743,7 @@ function safeText(value, fallback) {
 }
 
 function buildProfilePayload() {
-  const strategyGoal = normalizeStrategyGoal(getCheckedValue('training-strategy')
-    || getCheckedValue('direction')
-    || DEFAULT_PROFILE_VALUES.strategyGoal);
+  const strategyGoal = normalizeStrategyGoal(getCheckedValue('strategyGoal') || DEFAULT_PROFILE_VALUES.strategyGoal);
 
   const payload = {
     selectedUniverse: appState.selectedUniverse || 'Demon Slayer',
@@ -780,11 +778,8 @@ function getCheckedValue(name) {
 }
 
 function normalizeStrategyGoal(strategyGoal) {
-  if (strategyGoal === 'training') {
-    return 'train-like';
-  }
-
-  return strategyGoal;
+  const raw = String(strategyGoal || '').toLowerCase().replace(/_/g, '-');
+  return raw.includes('train') ? 'train-like' : 'physique';
 }
 
 function setSubmitLoadingState(isLoading) {

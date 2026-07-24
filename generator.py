@@ -3,34 +3,69 @@ import re
 
 
 TRACK_FOCUS = {
-    "track_a": "Upper Body Kinetic Thickness / Push-Pull",
-    "track_b": "Lower Body Athletic Base / Core Apex",
-    "track_c": "Active Mobility / Functional Conditioning Recovery Station",
-    "track_d": "Unilateral Power & Lower Body Bulletproofing",
-    "track_e": "High-Velocity Speed & Explosive Plyometrics",
+    "track_a": "Upper Body Width & Lat Expansion",
+    "track_b": "Armor-Plate Chest Density & Triceps",
+    "track_c": "Lower Body & Shredded Core Apex",
+    "track_d": "Back Thickness, Traps & Biceps",
+    "track_e": "Deltoid Hypertrophy & Abdominal Detail",
     "track_f": "Full-Body Combat Circuit & Anaerobic Conditioning",
     "recovery": "Full Recovery System Rest Arc"
-} 
+}
 
 TRACK_BY_WEEKDAY = {
     0: "track_a",
     1: "track_b",
     2: "track_c",
     3: "track_d",
-    4: "track_b",
-    5: "track_c",
+    4: "track_d",
+    5: "track_e",
     6: "recovery",
 }
 
 
 # --- Master Training Templates Database ---
 CHARACTER_TEMPLATES = {
-    "toji": {
+    "toji": { 
         "physique": {
-            "track_a": ["Weighted Pull-Ups", "Incline Dumbbell Bench Press", "Cable Rows", "Lateral Raises"],
-            "track_b": ["Barbell Romanian Deadlifts", "Bulgarian Split Squats", "Hanging Leg Raises", "Farmer's Walks"],
-            "track_c": ["Kettlebell Swings", "Medicine Ball Rotational Slams", "Agility Ladder Chains", "Loaded Carries"],
-            "recovery": ["Breath-Controlled Walk", "Hip Mobility Flow", "Thoracic Spine Openers", "Deep Core Bracing"],
+            "track_a": [
+                "HEAVENLY V-TAPER: Weighted Wide-Grip Pull-Ups (4 sets x 6-8 reps | 2 min rest)",
+                "Neutral Grip Lat Pulldown (3 sets x 10-12 reps | Flare Lats)",
+                "Dumbbell Lateral Raises (5 sets x 12-15 reps | 60s Rest)",
+                "Behind-the-Back Cable Lateral Raises (3 sets x 15 reps per side)",
+                "Incline Dumbbell Press (4 sets x 8-10 reps | Upper Chest Base)"
+            ],
+            "track_b": [
+                "ARMOR-PLATE PECS: Incline Smith Machine Press (4 sets x 8-10 reps)",
+                "Flat Barbell Bench Press or Heavy DB Press (3 sets x 8-10 reps)",
+                "High-to-Low Cable Pec Flyes (4 sets x 12-15 reps | Sharp Pec Line)",
+                "Weighted Dips (3 sets x 8-10 reps | Lower Chest & Triceps)",
+                "Overhead Tricep Cable Extensions - Rope (4 sets x 12-15 reps)"
+            ],
+            "track_c": [
+                "SHREDDED MIDSECTION: Barbell Back Squats or Hack Squats (4x8-10)",
+                "Romanian Deadlifts - RDLs (3 sets x 10 reps | Hamstring Sweep)",
+                "Walking Dumbbell Lunges (3 sets x 12 steps per leg)",
+                "Hanging Leg Raises (4 sets x 12-15 reps | Controlled Descent)",
+                "Ab Wheel Rollouts (3 sets x 10-12 reps)"
+            ],
+            "track_d": [
+                "BACK DENSITY & TRAPS: Overhand Barbell Rows (4 sets x 8-10 reps)",
+                "Chest-Supported T-Bar Rows (3 sets x 10-12 reps | Mid-Back Squeeze)",
+                "Heavy Dumbbell Shrugs (4 sets x 12 reps | 2s Top Hold)",
+                "Barbell Bicep Curls (4 sets x 10 reps)",
+                "Incline Dumbbell Hammer Curls (3 sets x 12 reps | Brachialis Width)"
+            ],
+            "track_e": [
+                "SUPERSET: Seated DB Shoulder Press (4x8-10) + DB Lateral Raises (4x15)",
+                "Reverse Pec Deck Rear Delt Flyes (4 sets x 15 reps)",
+                "Face Pulls (3 sets x 15-20 reps)",
+                "High-to-Low Cable Woodchoppers (3 sets x 15 per side | Serratus Detail)",
+                "Decline Bench Crunches with Twist (3 sets x 15-20 reps)"
+            ],
+            "recovery": [
+                "HEAVENLY RESTORATION: Full Upper Body & Shoulder Girdle Decompression (20 min)",
+                "Deep Thoracic Spine, Lat, & Hip Flexor Mobility Session"
+            ]
         },
         "train-like": {
             "track_a": ["Heavy Pull-Ups", "Explosive Push-Ups", "Landmine Press", "Towel Grip Rows"],
@@ -63,12 +98,12 @@ CHARACTER_TEMPLATES = {
                 "High-to-Low Cable Woodchoppers (3 sets x 15 per side | Serratus Focus)"
             ],
             "track_d": [
-                "Romanian Deadlifts - RDLs (4 sets x 8-10 reps | Hamstring Stretch)",
-                "Bulgarian Split Squats (3 sets x 10 reps per leg | Unilateral Balance)",
-                "Lying Leg Curls (3 sets x 12-15 reps)",
-                "Seated Calf Raises (4 sets x 15 reps)",
-                "Weighted Decline Bench Crunches (3 sets x 15 reps)"
-            ],
+    "POSTERIOR CHAIN & LEGS: Romanian Deadlifts - RDLs (4 sets x 8-10 reps | Hamstring Stretch)",
+    "Bulgarian Split Squats (3 sets x 10 reps per leg | Unilateral Balance)",
+    "Lying Leg Curls (3 sets x 12-15 reps)",
+    "Seated Calf Raises (4 sets x 15 reps)",
+    "Weighted Decline Bench Crunches (3 sets x 15 reps)"
+], 
             "track_e": [
                 "SUPERSET: Barbell Bicep Curls (4x10) + EZ-Bar Skull Crushers (4x10)",
                 "Cable Lateral Raises (4 sets x 15 reps | Capped Delts)",
@@ -221,43 +256,57 @@ CHARACTER_TEMPLATES = {
     "tengen": {
         "physique": {
             "track_a": [
-                "Incline Dumbbell Press (4 sets x 8-10 reps)",
+                "FLASHY CHEST DENSITY: Incline Dumbbell Press (4 sets x 8-10 reps)",
                 "Flat Barbell Bench Press (3 sets x 8-12 reps)",
                 "Chest-Supported T-Bar Row (3 sets x 10-12 reps)",
                 "SUPERSET: DB Hammer Curls + Overhead Ext (4 sets x 10/12 reps)",
                 "Cable Bicep Curls (3 sets x 12-15 reps | Last set Drop-Set)"
             ],
             "track_b": [
-                "Seated Dumbbell Shoulder Press (4 sets x 8-10 reps)",
+                "GOD OF FESTIVITIES DELTS: Seated Dumbbell Shoulder Press (4 sets x 8-10 reps)",
                 "Incline Smith Machine Press (3 sets x 10-12 reps)",
                 "Dumbbell Lateral Raises (4 sets x 12-15 reps | Strict Form)",
                 "Cable Pec Flyes (3 sets x 12-15 reps | Deep Stretch)",
                 "Tricep Rope Pushdowns (4 sets x 12-15 reps | 1s Hold)"
             ],
             "track_c": [
-                "THE TENGEN SPECIAL: Barbell Bicep Curls (4 sets x 8-10 reps)",
+                "SOUND HASHIRA GUNS: Barbell Bicep Curls (4 sets x 8-10 reps)",
                 "EZ-Bar Skull Crushers (4 sets x 10-12 reps)",
                 "SUPERSET: Cable Lat Raises + Behind-Back Wrist Curls (4 sets x 15/20 reps)",
                 "Dumbbell Incline Hammer Curls (3 sets x 12 reps)",
                 "Tricep Overhead Cable Extensions (3 sets x 12-15 reps)"
             ],
+            "track_d": [
+                "WIDE LATS & BACK THICKNESS: Heavy Weighted Pull-Ups (4 sets x 6-8 reps)",
+                "Neutral Grip Lat Pulldown (3 sets x 10-12 reps | Squeeze Lats)",
+                "Barbell Bent-Over Rows (4 sets x 8-10 reps)",
+                "Dumbbell Shrugs (4 sets x 12-15 reps | Squeeze Top)",
+                "Face Pulls (3 sets x 15-20 reps | Rear Delts & Traps)"
+            ],
+            "track_e": [
+                "EXPLOSIVE SHINOBI LEGS: Barbell Back Squats or Hack Squats (4 sets x 8-10 reps)",
+                "Romanian Deadlifts - RDLs (3 sets x 10 reps | Posterior Chain)",
+                "Dumbbell Walking Lunges (3 sets x 12 steps per leg)",
+                "Standing Calf Raises (4 sets x 15 reps)",
+                "Hanging Leg Raises (4 sets x 12-15 reps | Core Bracing)"
+            ],
             "recovery": [
-                "Deep Full-Body Muscle Stretching & Joint Decompression",
+                "FLASHY RESTORATION: Deep Full-Body Muscle Stretching & Joint Decompression (20 min)",
                 "Mobility Arc Recovery Drill",
                 "Diaphragmatic Breathing Rhythm Cycle"
-            ]
+            ],
         },
         "train-like": {
             "track_a": [
-                "Power Cleans (4 sets x 3-5 reps | 2-3 min rest)",
+                "FLASHY AGILITY & SPEED: Power Cleans (4 sets x 3-5 reps | 2-3 min rest)",
                 "Med Ball Rotational Slams (4 sets x 8 reps per side)",
                 "Landmine Press & Pivot (3 sets x 8 reps per side)",
                 "Weighted Pull-Ups (4 sets x 6 reps | Heavy Pulling)",
                 "Pallof Press (3 sets x 12 reps per side | Core Stability)"
             ],
             "track_b": [
-                "Front Squats (4 sets x 5 reps | High Core Demand)",
-                "Heavy Farmer’s Walks (4 rounds x 40 meters | Grip Focus)",
+                "EXPLOSIVE SHINOBI POWER: Front Squats (4 sets x 5 reps | High Core Demand)",
+                "Heavy Farmer's Walks (4 rounds x 40 meters | Grip Focus)",
                 "Kettlebell Swings (3 sets x 15 reps | Posterior Snap)",
                 "Z Press - Seated on Floor (3 sets x 8 reps | Pure Shoulders)",
                 "Hanging Leg Raises with a Twist (3 sets x 12 reps)"
@@ -269,14 +318,26 @@ CHARACTER_TEMPLATES = {
                 "Single-Leg Bounds (3 sets x 15 yards per leg)",
                 "Med Ball Overhead Backward Throws (4 sets x 5 reps)"
             ],
+            "track_d": [
+                "RESONANCE COMBAT CIRCUIT: Kettlebell Swings (4 sets x 15 reps)",
+                "Band-Resisted Sprints (4 sets x 15 meters)",
+                "Zercher Squat Explosions (4 sets x 6 reps)",
+                "Overhead Slam Ball (4 sets x 10 reps)",
+                "Ab Wheel Rollouts (3 sets x 10 reps)"
+            ],
+            "track_e": [
+                "MAXIMUM VELOCITY & STRENGTH: Depth Jumps to Sprint (4 sets x 4 reps)",
+                "Push Press (4 sets x 5 reps)",
+                "Behind-Back Wrist Curls (4 sets x 20 reps | Explosive Grip)",
+                "Decline Crunches with Twist (3 sets x 15 reps)"
+            ],
             "recovery": [
                 "Light Yoga Flow & Joint Decompression (20-30 min)",
                 "Deep Shinobi Stretching (Hamstrings, Hip Flexors, Calves)",
                 "Tactical Stance Work & Flow Recovery Drill"
             ]
-        } 
-    }, 
-        
+        }
+    },
     "inosuke": {
         "physique": {
             "track_a": [
@@ -724,9 +785,11 @@ def generate_custom_routine(profile_data):
     biologically scaled, safety-filtered Shonen training program.
     """
     char_key = resolve_character_key(profile_data)
-    strategy = profile_data.get("strategyGoal", "physique").lower()
-    if strategy not in ("physique", "train-like"):
-        strategy = "physique"
+    raw_strategy = str(profile_data.get("strategyGoal", "physique")).lower().replace("_", "-")
+    if "train" in raw_strategy:
+        strategy = "train-like"
+    else:
+        strategy = "physique" 
 
     age = parse_int(profile_data.get("age"), 25)
     weight = parse_float(profile_data.get("weight"), 70)
@@ -744,8 +807,20 @@ def generate_custom_routine(profile_data):
 
     current_day = datetime.now().weekday()
     track_key = TRACK_BY_WEEKDAY.get(current_day, "recovery")
-    selected_template = CHARACTER_TEMPLATES.get(char_key, CHARACTER_TEMPLATES["toji"])[strategy]
-    exercises = replace_heavy_bodyweight_movements(selected_template[track_key], weight)
+    char_template = CHARACTER_TEMPLATES.get(char_key, CHARACTER_TEMPLATES.get("toji", {}))
+    if strategy not in char_template:
+        strategy = "physique" if "physique" in char_template else list(char_template.keys())[0]
+    
+    selected_template = char_template[strategy] 
+    # Dynamic Focus Directive Extraction (Auto-extracts header before ':')
+    raw_exercises = selected_template.get(track_key, [])
+    first_exercise_str = raw_exercises[0] if raw_exercises else ""
+    if ":" in first_exercise_str:
+        focus_directive = first_exercise_str.split(":")[0].strip()
+    else:
+        # Generic fallback that fits any character without breaking the UI
+        focus_directive = f"{strategy.replace('-', ' ').upper()} PROTOCOL" 
+    exercises = replace_heavy_bodyweight_movements(raw_exercises, weight) 
     exercises = apply_preference_rules(exercises, workout_preferences)
 
     final_filtered_routines = build_routine_items(
@@ -778,7 +853,7 @@ def generate_custom_routine(profile_data):
                 # Inject recovery coaching modifiers to the cues
                 ex["coaching_cue"] += " [FATIGUE DELOAD ACTIVE: Focus strictly on form over load]"
 
-    focus_directive = TRACK_FOCUS[track_key]
+    # focus_directive = TRACK_FOCUS[track_key] 
     if age > 40:
         focus_directive += " | Recovery Tip: reduced compound volume for structural recovery."
 
