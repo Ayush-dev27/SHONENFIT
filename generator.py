@@ -67,12 +67,47 @@ CHARACTER_TEMPLATES = {
                 "Deep Thoracic Spine, Lat, & Hip Flexor Mobility Session"
             ]
         },
-        "train-like": {
-            "track_a": ["Heavy Pull-Ups", "Explosive Push-Ups", "Landmine Press", "Towel Grip Rows"],
-            "track_b": ["Heavy Barbell Deadlifts", "Plyometric Box Jumps", "Farmer's Walks", "Hanging Knee Raises"],
-            "track_c": ["Medicine Ball Rotational Slams", "Kettlebell Swings", "Shuttle Runs", "Animal Flow Crawls"],
-            "recovery": ["Joint Prep Flow", "Zone 2 Walk", "Grip Flush Carries", "Breathing Reset Holds"],
-        },
+        
+    "train-like": {
+        "track_a": [
+            "MAX PHYSICAL POWER: Trap Bar Deadlifts (4 sets x 3-5 reps | Heavy Force Production)",
+            "Barbell Overhead Press (4 sets x 5 reps)",
+            "Weighted Chin-Ups (4 sets x 5 reps | Heavy Pulling)",
+            "Heavy Medicine Ball Slams (4 sets x 8 reps | Downward Output)",
+            "Heavy Farmer's Carries (4 rounds x 30 meters | Crushing Grip)"
+        ],
+        "track_b": [
+            "APEX AGILITY & DECELERATION: Pro Agility Shuttle 5-10-5 (5 rounds | Plant & Explode)",
+            "Depth Jumps to Lateral Bound (4 sets x 4 reps per side)",
+            "30-Meter Max Sprints (5 rounds | Full Neural Recovery)",
+            "Single-Leg Box Jumps (3 sets x 5 reps per leg)",
+            "Tibialis and Calf Explosions (3 sets x 15 reps | Joint Bulletproofing)"
+        ],
+        "track_c": [
+            "TACTICAL WEAPON FLOW: Steel Club or Heavy Mace Halos (4 sets x 10 reps per side)",
+            "Twin Stick / Escrima Flow Drills (20 minutes | Coordination & Speed)",
+            "Rotational Medicine Ball Wall Throws (4 sets x 8 reps per side)",
+            "Towel Dead-Hangs (3 sets x Max Time | Grip Endurance)"
+        ],
+        "track_d": [
+            "UNILATERAL EXPLOSIVENESS & ARMOR: Front Squats (4 sets x 5 reps | Heavy Core Load)",
+            "Bulgarian Split Squats - Explosive Drive (3 sets x 6 reps per leg)",
+            "Landmine Press & Pivot (3 sets x 8 reps per arm)",
+            "Zercher Carries (3 rounds x 30 meters | Core & Back Armor)",
+            "Hanging Leg Raises with a Twist (3 sets x 12 reps)"
+        ],
+        "track_e": [
+            "SORCERER KILLER CIRCUIT: Reflex Ball / Wall Catches Warmup (15 mins)",
+            "CIRCUIT (4 Rounds): 10 KB Cleans to Press + 15 Explosive Push-Ups",
+            "CIRCUIT: 10 Sandbag Ground-to-Overhead Slams + 20m Bear Crawl",
+            "CIRCUIT FINISHER: 100m Full-Out Sprint (90s Rest between rounds)"
+        ],
+        "recovery": [
+            "HEAVENLY RESTORATION: Thoracic Spine & Hip Opening Flow (20-30 min)",
+            "Deep Fascial Release & Joint Decompression"
+        ]
+    }
+
     },
     "itadori": {
         "physique": {
