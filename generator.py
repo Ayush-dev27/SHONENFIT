@@ -196,11 +196,48 @@ CHARACTER_TEMPLATES = {
     },
     "maki": {
         "physique": {
-            "track_a": ["Lat Pulldowns", "Overhead Dumbbell Press", "Single-Arm Cable Rows", "Rear Delt Flyes"],
-            "track_b": ["Dumbbell Romanian Deadlifts", "Bulgarian Split Squats", "Plank Variations", "Step-Ups"],
-            "track_c": ["Jump Rope Double Unders", "Agility Ladder Fast-Footwork Chains", "Kettlebell Halos", "Bear Crawls"],
-            "recovery": ["Weapon-Range Shoulder Flow", "Hamstring Mobility", "Core Breathing Holds", "Easy Walk"],
+            "track_a": [
+                "CAPPED DELTS & UPPER FRAME: Standing Dumbbell Shoulder Press (4 sets x 8-10 reps)",
+                "Wide-Grip Lat Pulldowns or Assisted Pull-Ups (4 sets x 8-12 reps | Flare Lats)",
+                "Dumbbell Lateral Raises (4 sets x 12-15 reps | Strict Control)",
+                "Incline Dumbbell Press (3 sets x 10-12 reps | Upper Chest Fill)",
+                "Cable Pec Flyes (3 sets x 12-15 reps)"
+            ],
+            "track_b": [
+                "QUAD SWEEP & ATHLETIC LEGS: Barbell Back Squats or Goblet Squats (4 sets x 8-10 reps)",
+                "Leg Press - Low Stance (3 sets x 10-12 reps | Quad Focus)",
+                "Walking Dumbbell Lunges (3 sets x 12 steps per leg)",
+                "Standing Calf Raises (4 sets x 15-20 reps | 1s Top Hold)",
+                "Hanging Knee Raises (4 sets x 15 reps)"
+            ],
+            "track_c": [
+                "BEAST CORE & SERRATUS: High-to-Low Cable Woodchoppers (3 sets x 15 per side)",
+                "Ab Wheel Rollouts (3 sets x 10-12 reps | Deep Bracing)",
+                "SUPERSET: DB Hammer Curls (3x12) + Tricep Rope Pushdowns (3x12-15)",
+                "Plank with Knee-to-Elbow Drives (3 sets x 45 seconds)",
+                "Reverse Wrist Curls (3 sets x 15 reps | Forearm Definition)"
+            ],
+            "track_d": [
+                "3D POSTERIOR BACK & REAR DELTS: Chest-Supported T-Bar Rows (4 sets x 8-10 reps)",
+                "Neutral Grip Cable Rows (3 sets x 10-12 reps)",
+                "Face Pulls (4 sets x 15-20 reps | Rear Delt & Upper Back Posture)",
+                "Cable Lateral Raises (4 sets x 15 reps per arm | Constant Tension)",
+                "Incline Dumbbell Curls (3 sets x 12 reps)"
+            ],
+            "track_e": [
+                "POSTERIOR CHAIN & GLUTE HAM: Romanian Deadlifts - RDLs (4 sets x 8-10 reps)",
+                "Bulgarian Split Squats (3 sets x 10 reps per leg)",
+                "Lying Leg Curls (3 sets x 12-15 reps)",
+                "Decline Bench Crunches (3 sets x 15-20 reps)",
+                "Side Planks (3 sets x 45 seconds per side)"
+            ],
+            "recovery": [
+                "AWAKENED RESTORATION: Deep Fascial Release & Hip Mobility Arc (20 min)",
+                "Thoracic Opening & Shoulder Girdle Decompression",
+                "Diaphragmatic Breathing Rhythm Cycle"
+            ]
         },
+    
         "train-like": {
             "track_a": ["Kettlebell Snatches", "Towel Pull-Ups", "Landmine Press", "Grip Crush Carries"],
             "track_b": ["Barbell Landmine Rotations", "Lateral Lunges", "Copenhagen Planks", "Single-Leg RDLs"],
