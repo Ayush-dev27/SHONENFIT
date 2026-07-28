@@ -239,11 +239,45 @@ CHARACTER_TEMPLATES = {
         },
     
         "train-like": {
-            "track_a": ["Kettlebell Snatches", "Towel Pull-Ups", "Landmine Press", "Grip Crush Carries"],
-            "track_b": ["Barbell Landmine Rotations", "Lateral Lunges", "Copenhagen Planks", "Single-Leg RDLs"],
-            "track_c": ["Agility Ladder Fast-Footwork Chains", "Jump Rope Double Unders", "Shuttle Cuts", "Kettlebell Windmills"],
-            "recovery": ["Joint Mobility Circuit", "Light Technical Footwork", "Wrist Conditioning", "Nasal Breathing Walk"],
-        },
+            "track_a": [
+                "ROTATIONAL TORQUE & WEAPON SWINGING: Trap Bar Deadlifts (4 sets x 3-5 reps | Raw Power)",
+                "Med Ball Rotational Wall Slams (4 sets x 6 reps per side | Core Torque)",
+                "Strict Weighted Pull-Ups (4 sets x 5-6 reps | Heavy Lat Control)",
+                "Landmine Rotational Press (3 sets x 8 reps per side | Core Power Transfer)",
+                "Pallof Press (3 sets x 12 reps per side | Anti-Rotational Stability)"
+            ],
+            "track_b": [
+                "HIGH-ALTITUDE AGILITY & FOOTWORK: Pro Agility Shuttle 5-10-5 (5 rounds | Plant & Turn)",
+                "Depth Jumps to Vertical Jump (4 sets x 4 reps | Explosive Leaping)",
+                "Single-Leg Box Jumps (3 sets x 5 reps per leg)",
+                "40-Meter Max Sprints (5 rounds | Full Neural Velocity)",
+                "Tibialis Raises & Calf Explosions (3 sets x 15 reps | Ankle Bulletproofing)"
+            ],
+            "track_c": [
+                "POLEARM SKILL & REFLEXES: Steel Club or Macebell 360s & Halos (4 sets x 10 per side)",
+                "Bo Staff / Heavy Dowel Slash Drills (20 minutes | High-Speed Cuts & Parries)",
+                "Towel Dead-Hangs (3 sets x Max Time | Leverage Grip Endurance)",
+                "Tennis Ball Reaction & Parry Drills (10 minutes | Spatial Awareness)"
+            ],
+            "track_d": [
+                "UNILATERAL EXPLOSIVENESS & HEAVY CARRIES: Barbell Front Squats (4 sets x 5 reps)",
+                "Bulgarian Split Squats - Explosive Drive (3 sets x 6 reps per leg)",
+                "Heavy Zercher Carries (3 rounds x 30 meters | Combat Load Chassis)",
+                "Farmer's Walks with Fat Grips (4 rounds x 30 meters)",
+                "Hanging Leg Raises with a Twist (3 sets x 12 reps)"
+            ],
+            "track_e": [
+                "CURSED TOOL BATTLE CONDITIONING: CIRCUIT (4 Rounds | 90s Rest Between)",
+                "10 Kettlebell Cleans to Overhead Press + 12 Clapping Push-Ups",
+                "10 Sandbag Ground-to-Overhead Slams + 20m Bear Crawl Sprint",
+                "CIRCUIT FINISHER: 100m Full-Out Sprint"
+            ],
+            "recovery": [
+                "AWAKENED RESTORATION: Deep Full-Body Mobility Flow (20-30 min)",
+                "Hip Flexor, Hamstring & Thoracic Spine Opening",
+                "Diaphragmatic Breathing Rhythm Cycle"
+            ]
+        } 
     },
     "tanjiro": {
         "physique": {
