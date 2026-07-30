@@ -536,11 +536,49 @@ CHARACTER_TEMPLATES = {
     },
     "deku": {
         "physique": {
-            "track_a": ["Overhead Barbell Press", "Push-Ups (Weighted)", "Dumbbell Shrugs", "Cable Rows"],
-            "track_b": ["Barbell Back Squats", "Hamstring Curls", "Jump Squats", "Hanging Leg Raises"],
-            "track_c": ["Depth Jumps to Explosive Bounds", "Clapping Push-Ups", "Heavy Sled Pushes", "Medicine Ball Slams"],
-            "recovery": ["Joint Impact Prep", "Easy Bike", "Ankle-Knee-Hip Mobility", "Breathing Control"],
-        },
+            "track_a": [
+                "CAPPED DELTS & FULL CHEST: Incline Dumbbell Bench Press (4 sets x 8-10 reps)",
+                "Flat Barbell Bench Press (3 sets x 8-10 reps)",
+                "Standing Dumbbell Overhead Press (3 sets x 8-10 reps | Mass Focus)",
+                "Dumbbell Lateral Raises (4 sets x 12-15 reps | Strict Form)",
+                "Dips - Weighted or Bodyweight (3 sets x 10-12 reps | Lower Chest Separation)"
+            ],
+            "track_b": [
+                "THICK LATS & FOREARM DENSITY: Weighted Pull-Ups (4 sets x 6-8 reps | Drive Elbows Down)",
+                "Barbell Bent-Over Rows (3 sets x 8-10 reps | Mid-Back Mass)",
+                "Neutral Grip Lat Pulldown (3 sets x 10-12 reps)",
+                "Behind-the-Back Barbell Wrist Curls (4 sets x 15-20 reps | Forearm Density)",
+                "Reverse Barbell Curls (3 sets x 12-15 reps | Brachioradialis)"
+            ],
+            "track_c": [
+                "SHOOT STYLE QUADS & CALVES: Barbell Back Squats (4 sets x 8-10 reps | Deep ROM)",
+                "Leg Press - Low & Narrow Stance (3 sets x 10-12 reps | Quad Focus)",
+                "Walking Dumbbell Lunges (3 sets x 12 steps per leg)",
+                "Standing Calf Raises (5 sets x 15-20 reps | 1s Top Hold)",
+                "Hanging Leg Raises (4 sets x 12-15 reps)"
+            ],
+            "track_d": [
+                "ARM DENSITY & CORE DETAIL: SUPERSET: Barbell Bicep Curls (4x10) + Skull Crushers (4x10)",
+                "Cable Lateral Raises (4 sets x 15 reps)",
+                "Incline Dumbbell Hammer Curls (3 sets x 12 reps | Arm Width)",
+                "Tricep Overhead Cable Extension (3 sets x 12-15 reps)",
+                "High-to-Low Cable Woodchoppers (3 sets x 15 per side | Serratus Detail)",
+                "Ab Wheel Rollouts (3 sets x 10-12 reps)"
+            ],
+            "track_e": [
+                "POSTERIOR CHAIN & ETCHED ABS: Romanian Deadlifts - RDLs (4 sets x 8-10 reps)",
+                "Bulgarian Split Squats (3 sets x 10 reps per leg)",
+                "Lying Leg Curls (3 sets x 12-15 reps)",
+                "Weighted Decline Bench Crunches (4 sets x 15 reps)",
+                "Plank Holds (3 sets x 60 seconds)"
+            ],
+            "recovery": [
+                "ONE FOR ALL RESTORATION: Deep Fascial Mobility Arc & Lower Limb Decompression (20 min)",
+                "Thoracic & Shoulder Girdle Opening",
+                "Diaphragmatic Breathing Rhythm Cycle"
+            ]
+        }, 
+    
         "train-like": {
             "track_a": ["Clapping Push-Ups", "Power Cleans", "Explosive Pulls", "Overhead Carries"],
             "track_b": ["Depth Jumps to Explosive Bounds", "Heavy Sled Pushes", "Jump Squats", "Core Bracing Carries"],
