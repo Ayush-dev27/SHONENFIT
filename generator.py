@@ -580,11 +580,46 @@ CHARACTER_TEMPLATES = {
         }, 
     
         "train-like": {
-            "track_a": ["Clapping Push-Ups", "Power Cleans", "Explosive Pulls", "Overhead Carries"],
-            "track_b": ["Depth Jumps to Explosive Bounds", "Heavy Sled Pushes", "Jump Squats", "Core Bracing Carries"],
-            "track_c": ["Reactive Bounds", "Medicine Ball Slams", "Agility Deceleration Drills", "Sprint Mechanics"],
-            "recovery": ["Impact Recovery Flow", "Zone 2 Bike", "Soft Tissue Mobility", "Controlled Breath Work"],
-        },
+            "track_a": [
+                "DAGOBAH BEACH HEAVY LABOR: Zercher Squats (4 sets x 6 reps | Core & Upper Back Load)",
+                "Sandbag / Med Ball Ground-to-Overhead (4 sets x 8 reps | Grounded Drive)",
+                "Heavy Farmer's Walks (4 rounds x 40 meters | Unyielding Grip)",
+                "Bear Hug Sandbag Carries (3 rounds x 50 meters | Thoracic Endurance)",
+                "Sled Pushes or Tire Flips (4 sets x 30 meters | Pure Leg Drive)"
+            ],
+            "track_b": [
+                "SHOOT STYLE KINETIC PLYOS: Depth Jumps to Max Vertical (4 sets x 4 reps | Impact Absorption)",
+                "Single-Leg Distance Bounds (3 sets x 20 yards | Landing Stability)",
+                "Med Ball Rotational Wall Slams (4 sets x 6 reps per side | Hip Torque)",
+                "30-Meter Max-Effort Sprints (5 rounds | Full Neural Speed)",
+                "Tibialis & Calf Explosions (3 sets x 15 reps | Ankle Bulletproofing)"
+            ],
+            "track_c": [
+                "UPPER BODY RECOIL ARMOR: Power Cleans (4 sets x 3-5 reps | Explosive Extension)",
+                "Strict Weighted Pull-Ups (4 sets x 5 reps | Lat Armor)",
+                "Overhead KB/DB Push Press (4 sets x 6 reps | Kinetic Chain Drive)",
+                "Towel Dead-Hangs (3 sets x Max Time | Grip Endurance)",
+                "Pallof Press with Rotation (3 sets x 10 reps per side)"
+            ],
+            "track_d": [
+                "UNILATERAL EXPLOSIVENESS & BULLETPROOFING: Barbell Front Squats (4 sets x 5 reps)",
+                "Explosive Bulgarian Split Squats (3 sets x 5 reps per leg | Floor Drive)",
+                "Nordic Hamstring Curls or Heavy RDLs (3 sets x 8 reps | Hamstring Armor)",
+                "Landmine Press & Pivot (3 sets x 8 reps per arm | Punch Translation)",
+                "Hanging Leg Raises with a Twist (3 sets x 12 reps)"
+            ],
+            "track_e": [
+                "OFA THRESHOLD CIRCUIT: COMPLEX (4 Rounds | 90-120s Rest Between)",
+                "400-Meter Fast Run + 15 Burpee Box Jump-Overs",
+                "10 Heavy Sandbag Slams + 20m Bear Crawl Sprint",
+                "CIRCUIT FINISHER: Full Neural Recovery Cycle"
+            ],
+            "recovery": [
+                "ONE FOR ALL RESTORATION: Diaphragmatic Breathing & Mobility Flow (20-30 min)",
+                "Hip Flexor, Hamstring & Ankle Decompression",
+                "Shoulder Girdle Opening & Recovery Rhythm"
+            ]
+        } 
     },
     "bakugo": {
         "physique": {
