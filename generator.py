@@ -623,11 +623,48 @@ CHARACTER_TEMPLATES = {
     },
     "bakugo": {
         "physique": {
-            "track_a": ["Close-Grip Bench Press", "Weighted Pull-Ups", "Dumbbell Overhead Extensions", "Cable Rows"],
-            "track_b": ["Box Drills (Lateral Bounds)", "Plank Jacks", "Goblet Squats", "Barbell Wrist Curls"],
-            "track_c": ["Battle Rope Slams (Fast Tempo)", "Medicine Ball Chest Passes", "Kettlebell Push Presses", "Lateral Bounds"],
-            "recovery": ["Forearm Tendon Care", "Shoulder Mobility", "Easy Row Erg", "Breathing Reset"],
-        },
+            "track_a": [
+                "3D DELTOIDS & LAT FLARE: Seated Dumbbell Shoulder Press (4 sets x 8-10 reps)",
+                "Weighted Wide-Grip Pull-Ups (4 sets x 6-8 reps | Flare Lats)",
+                "Dumbbell Lateral Raises (5 sets x 12-15 reps | Strict Control)",
+                "Behind-the-Back Cable Lateral Raises (3 sets x 15 per side | Continuous Tension)",
+                "Incline Dumbbell Flyes (3 sets x 12 reps | Upper Chest Stretch)"
+            ],
+            "track_b": [
+                "ARMOR PLATE PECS & TRICEPS: Incline Smith Machine Bench Press (4 sets x 8-10 reps)",
+                "Flat Dumbbell Bench Press (3 sets x 8-10 reps)",
+                "High-to-Low Cable Pec Flyes (4 sets x 12-15 reps | Lower Chest Etching)",
+                "Weighted Dips (3 sets x 8-10 reps | Tricep & Chest Density)",
+                "Overhead Rope Tricep Extensions (4 sets x 12-15 reps | Long Head Focus)"
+            ],
+            "track_c": [
+                "EXPLOSION RECOIL TRAPS & BACK: Barbell Shrugs (4 sets x 10-12 reps | 2s Top Hold)",
+                "Overhand Barbell Bent-Over Rows (4 sets x 8-10 reps)",
+                "Chest-Supported T-Bar Rows (3 sets x 10-12 reps | Mid-Back Squeeze)",
+                "Reverse Pec Deck (4 sets x 15 reps | 3D Rear Delts)",
+                "Face Pulls (3 sets x 15-20 reps)"
+            ],
+            "track_d": [
+                "FOREARM DENSITY & SERRATUS: SUPERSET: Barbell Bicep Curls (4x10) + Skull Crushers (4x10)",
+                "Behind-the-Back Barbell Wrist Curls (4 sets x 15-20 reps | Forearm Mass)",
+                "Incline Dumbbell Hammer Curls (3 sets x 12 reps | Brachialis Focus)",
+                "High-to-Low Cable Woodchoppers (3 sets x 15 per side | Serratus Detail)",
+                "Ab Wheel Rollouts (3 sets x 10-12 reps)"
+            ],
+            "track_e": [
+                "ATHLETIC BASE & OBLIQUE DETAIL: Barbell Back Squats or Hack Squats (4 sets x 8-10 reps)",
+                "Romanian Deadlifts - RDLs (3 sets x 10 reps | Hamstring & Glute Sweep)",
+                "Walking Dumbbell Lunges (3 sets x 12 steps per leg)",
+                "Standing Calf Raises (4 sets x 15-20 reps)",
+                "Hanging Knee Raises with Side Twist (4 sets x 15 reps | Oblique Carve)"
+            ],
+            "recovery": [
+                "EXPLOSIVE RESTORATION: Upper Body Decompression & Shoulder Girdle Opening (20 min)",
+                "Thoracic Spine & Wrist Flexor Mobility Arc",
+                "Diaphragmatic Breathing Rhythm Cycle"
+            ]
+        }, 
+    
         "train-like": {
             "track_a": ["Medicine Ball Chest Passes", "Battle Rope Slams (Fast Tempo)", "Kettlebell Push Presses", "Explosive Dips"],
             "track_b": ["Box Drills (Lateral Bounds)", "Plank Jacks", "Loaded Step-Ups", "Rotational Core Throws"],
