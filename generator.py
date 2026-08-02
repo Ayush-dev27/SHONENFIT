@@ -666,11 +666,46 @@ CHARACTER_TEMPLATES = {
         }, 
     
         "train-like": {
-            "track_a": ["Medicine Ball Chest Passes", "Battle Rope Slams (Fast Tempo)", "Kettlebell Push Presses", "Explosive Dips"],
-            "track_b": ["Box Drills (Lateral Bounds)", "Plank Jacks", "Loaded Step-Ups", "Rotational Core Throws"],
-            "track_c": ["Rapid Direction-Shift Drills", "Assault Bike Bursts", "Battle Rope Alternating Waves", "Sprint Deceleration"],
-            "recovery": ["Wrist Mobility Flow", "Low-Intensity Cardio", "Scapular Control", "Nasal Breathing"],
-        },
+            "track_a": [
+                "BALLISTIC POWER & RECOIL: Med Ball Chest Pass Slams (4 sets x 6 reps | Catch & Recoil)",
+                "Barbell Push Press (4 sets x 5 reps | Lower-to-Upper Kinetic Drive)",
+                "Speed Bench Press - Dynamic Effort (4 sets x 3 reps @ 50-60% 1RM)",
+                "Plyometric / Clapping Push-Ups (3 sets x 6-8 reps | Eccentric Absorption)",
+                "Heavy KB Overhead Carries (3 rounds x 30 meters | Shoulder Armor)"
+            ],
+            "track_b": [
+                "HOWITZER AGILITY & REDIRECTION: Pro Agility Shuttle 5-10-5 (5 rounds | Hard Plant)",
+                "Depth Jumps into Broad Jump (4 sets x 4 reps | Immediate Explode)",
+                "Lateral Bounds / Skater Hops (3 sets x 8 reps per side)",
+                "30-Meter Max-Effort Sprints (5 rounds | Full Neural Speed)",
+                "Tibialis & Calf Raises (3 sets x 15 reps | Ankle Bulletproofing)"
+            ],
+            "track_c": [
+                "HOWITZER ROTATIONAL TORQUE: Heavy Med Ball Rotational Wall Slams (4 sets x 6 per side)",
+                "Landmine Rotational Twists / Rainbows (3 sets x 8 reps per side | Core Bracing)",
+                "Wrist Roller - Flexion & Extension (4 sets x Up/Down | Recoil Armor)",
+                "Heavy Mace / Steel Club 360s (3 sets x 10 reps per side | Shoulder Leverage)",
+                "Pallof Press (3 sets x 12 reps per side)"
+            ],
+            "track_d": [
+                "LOWER BODY PLYOS & SHOCK ABSORPTION: Power Cleans or Jump Shrugs (4 sets x 3-5 reps)",
+                "Barbell Front Squats (4 sets x 5 reps | Quad Drive)",
+                "Explosive Single-Leg Box Jumps (3 sets x 4 reps per leg)",
+                "Nordic Hamstring Curls or Heavy RDLs (3 sets x 8 reps | Deceleration Shield)",
+                "Hanging Leg Raises with a Twist (3 sets x 12 reps)"
+            ],
+            "track_e": [
+                "STUN GRENADE CIRCUIT: COMPLEX (4 Rounds | 90-120s Rest Between)",
+                "10 Heavy Med Ball Overhead Slams + 10 DB Thrusters",
+                "15 Plyo Push-Ups + 20m Bear Crawl Sprint",
+                "CIRCUIT FINISHER: 100m Full-Out Sprint"
+            ],
+            "recovery": [
+                "EXPLOSIVE RESTORATION: Wrist, Shoulder & Thoracic Mobility Flow (20-30 min)",
+                "Band Shoulder Dislocates & Wrist Extension/Flexion Arc",
+                "Diaphragmatic Breathing Rhythm Cycle"
+            ]
+        } 
     },
     "all-might": {
         "physique": {
