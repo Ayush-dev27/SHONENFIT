@@ -707,21 +707,59 @@ CHARACTER_TEMPLATES = {
             ]
         } 
     },
-    "all-might": {
+    "all_might": {
         "physique": {
-            "track_a": ["Barbell Bench Press (Heavy)", "Seated Barbell Overhead Press", "Barbell Curls", "Heavy Cable Rows"],
-            "track_b": ["Barbell Back Squats (Heavy)", "Barbell Deadlifts (Heavy)", "Farmer's Carries", "Weighted Sit-Ups"],
-            "track_c": ["Medicine Ball Overhead Slams", "Heavy Sled Drags", "Log Clean Technique", "Loaded Carries"],
-            "recovery": ["Golden-Era Mobility Flow", "Long Walk", "Shoulder Care", "Breathing Reset"],
+            "track_a": [
+                "BARREL CHEST & UPPER PECS: Incline Barbell Bench Press (4 sets x 6-8 reps | Heavy Load)",
+                "Flat Dumbbell Bench Press (4 sets x 8-10 reps)",
+                "Weighted Dips (3 sets x 8-10 reps | Forward Lean for Pecs)",
+                "Incline Dumbbell Flyes (3 sets x 10-12 reps | Deep Stretch)",
+                "Low-to-High Cable Pec Flyes (3 sets x 12-15 reps)"
+            ],
+            "track_b": [
+                "WIDE LAT SWEEP & TRAP MASS: Weighted Pull-Ups (4 sets x 6-8 reps)",
+                "Barbell Bent-Over Rows (4 sets x 8-10 reps | Mid-Back Thickness)",
+                "Wide Grip Lat Pulldowns (3 sets x 10-12 reps)",
+                "Barbell Shrugs (4 sets x 8-10 reps | 2s Top Squeeze)",
+                "Face Pulls (4 sets x 15 reps)"
+            ],
+            "track_c": [
+                "CANNONBALL DELTS & TRAPS: Standing Barbell Overhead Press (4 sets x 6-8 reps)",
+                "Seated Dumbbell Shoulder Press (3 sets x 8-10 reps)",
+                "Dumbbell Lateral Raises (5 sets x 12-15 reps | Side Delt Width)",
+                "Dumbbell Shrugs - Slight Forward Lean (3 sets x 12-15 reps)",
+                "Reverse Pec Deck (4 sets x 12-15 reps | Rear Delt Caps)"
+            ],
+            "track_d": [
+                "HORSESHOE TRICEPS & BICEP PEAKS: SUPERSET: Heavy Barbell Curls (4x8-10) + Skull Crushers (4x8-10)",
+                "Incline Dumbbell Curls (3 sets x 10-12 reps)",
+                "Overhead Cable Tricep Extensions (3 sets x 10-12 reps)",
+                "Hammer Curls (3 sets x 12 reps | Brachialis Focus)",
+                "Behind-the-Back Wrist Curls (4 sets x 15 reps | Forearm Mass)"
+            ],
+            "track_e": [
+                "HEAVY LEGS & ARMORED CORE: Barbell Back Squats (4 sets x 6-8 reps | Heavy Load)",
+                "Leg Press (3 sets x 10-12 reps)",
+                "Romanian Deadlifts - RDLs (3 sets x 8-10 reps | Posterior Chain)",
+                "Standing Calf Raises (5 sets x 15-20 reps)",
+                "Heavy Weighted Decline Crunches (4 sets x 12-15 reps)",
+                "Ab Wheel Rollouts (3 sets x 10-12 reps)"
+            ],
+            "recovery": [
+                "SYMBOL OF PEACE RESTORATION: Full Body Decompression & Thoracic Mobility Arc (20 min)",
+                "Pectoral & Shoulder Girdle Opening",
+                "Diaphragmatic Breathing Rhythm Cycle"
+            ]
+        
         },
         "train-like": {
-            "track_a": ["Heavy Log Clean and Press", "Barbell Bench Press (Heavy)", "Rack Lockouts", "Weighted Pull-Ups"],
-            "track_b": ["Rack Pulls (Above Knee)", "Heavy Sled Drags", "Farmer's Carries (Max Weight)", "Core Bracing Holds"],
-            "track_c": ["Medicine Ball Overhead Slams", "Heavy Sled Pushes", "Power Step-Ups", "Conditioning Carries"],
-            "recovery": ["Full Recovery System Walk", "Loaded Stretching", "Breath-Control Reset", "Joint Prep Circuit"],
-        },
+            "track_a": ["Heavy Log Clean and Press", "Barbell Bench Press (Heavy)", "Rack Lockouts"],
+            "track_b": ["Rack Pulls (Above Knee)", "Heavy Sled Drags", "Farmer's Carries (Max Weight)"],
+            "track_c": ["Medicine Ball Overhead Slams", "Heavy Sled Pushes", "Power Step-Ups"],
+            "recovery": ["Full Recovery System Walk", "Loaded Stretching", "Breath-Control Reset"]
+        }
     },
-}
+} 
 
 
 def resolve_character_key(profile_data):
