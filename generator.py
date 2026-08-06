@@ -753,12 +753,46 @@ CHARACTER_TEMPLATES = {
         
         },
         "train-like": {
-            "track_a": ["Heavy Log Clean and Press", "Barbell Bench Press (Heavy)", "Rack Lockouts"],
-            "track_b": ["Rack Pulls (Above Knee)", "Heavy Sled Drags", "Farmer's Carries (Max Weight)"],
-            "track_c": ["Medicine Ball Overhead Slams", "Heavy Sled Pushes", "Power Step-Ups"],
-            "recovery": ["Full Recovery System Walk", "Loaded Stretching", "Breath-Control Reset"]
+            "track_a": [
+                "STRUCTURAL POWER & HEAVY PULLING: Conventional Barbell Deadlifts (4 sets x 3-5 reps | Raw Power)",
+                "Power Cleans (4 sets x 3 reps | Explosive Extension)",
+                "Weighted Chin-Ups (4 sets x 5 reps | Heavy Upper Back)",
+                "Heavy Barbell Shrugs (4 sets x 8 reps | Neck Protection Trap Armor)",
+                "Max Load Farmer's Walks (4 rounds x 30 meters | Crushing Grip)"
+            ],
+            "track_b": [
+                "SHOCKWAVE OVERHEAD PRESSING: Standing Barbell Push Press or Log Press (4 sets x 3-5 reps)",
+                "Heavy Barbell Bench Press (4 sets x 5 reps | Raw Chest & Tricep Power)",
+                "Med Ball Chest Pass Slams (4 sets x 6 reps | Explosive Horizontal Force)",
+                "Heavy KB Overhead Carries (3 rounds x 30 meters per arm | Shoulder Armor)",
+                "Heavy Weighted Dips (3 sets x 6-8 reps)"
+            ],
+            "track_c": [
+                "TEXAS SMASH UNYIELDING CHASSIS: Heavy Zercher Squats or Carries (4 sets x 5 reps / 30m)",
+                "Sandbag Ground-to-Overhead Slams (4 sets x 6 reps | Awkward Load Launch)",
+                "Bear-Hug Sandbag Carries (3 rounds x 40 meters | Thoracic Rigidity)",
+                "Heavy Sled Pushes or Tire Flips (4 sets x 30 meters | Grounded Leg Drive)"
+            ],
+            "track_d": [
+                "LOWER BODY FORCE & GROUND DRIVE: Heavy Barbell Back Squats (4 sets x 5 reps | Deep ROM)",
+                "Trap Bar Jump Shrugs / Jump Squats (3 sets x 5 reps | Triple Extension)",
+                "Romanian Deadlifts - RDLs (3 sets x 8 reps | Posterior Chain)",
+                "Standing Calf Explosions (4 sets x 12 reps | Ankle Stiffness)",
+                "Heavy Ab Wheel Rollouts (3 sets x 10 reps)"
+            ],
+            "track_e": [
+                "CAROLINA SMASH ENGINE: COMPLEX (4 Rounds | 2 min Rest Between)",
+                "5 Heavy Barbell Clean & Presses + 10 Heavy Sandbag Slams",
+                "15 Box Jumps + 50m Heavy Sled Push or Farmer Walk",
+                "CIRCUIT FINISHER: Full Recovery Rhythm Reset"
+            ],
+            "recovery": [
+                "SYMBOL OF PEACE RESTORATION: Deep Thoracic Spine Extension & Hip Mobility (20-30 min)",
+                "Pectoral & Shoulder Girdle Mobility Arc",
+                "Diaphragmatic Breathing Rhythm Cycle"
+            ]
         }
-    },
+} 
 } 
 
 
