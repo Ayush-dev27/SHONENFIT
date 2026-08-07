@@ -840,7 +840,7 @@ function renderDashboardSummary(workoutData) {
             // Let your custom layout strings pass through completely untouched
             item.textContent = exerciseName;
         } else if (exercise && exercise.name) {
-            // Standard fallback view
+            // Standard fallback view 
             const sets = exercise.sets || 4;
             const reps = exercise.reps || '8 to 12 reps';
             item.textContent = `${exercise.name} - ${sets} sets x ${reps}`;
@@ -1081,11 +1081,11 @@ function populateWorkoutExercises() {
 
     const meta = document.createElement('p');
     meta.className = 'exercise-card-meta';
-    meta.textContent = `${exercise.sets || 4} sets x ${exercise.reps || 'controlled reps'} - ${exercise.coaching_cue || 'Move with clean form and steady breathing.'}`;
+    const setCount = getExerciseSetCount(exercise);
+    meta.textContent = `${setCount} sets x ${exercise.reps || 'controlled reps'} - ${exercise.coaching_cue || 'Move with clean form and steady breathing.'}`;
 
     const setButtons = document.createElement('div');
     setButtons.className = 'set-buttons';
-    const setCount = getExerciseSetCount(exercise);
 
     for (let setIndex = 1; setIndex <= setCount; setIndex += 1) {
       const setButton = document.createElement('button');
@@ -1112,8 +1112,10 @@ function getAssignedWorkoutRoutine(workoutData = appState.latestWorkoutData) {
 }
 
 function getExerciseSetCount(exercise) {
-  const parsedSets = Number.parseInt(exercise?.sets, 10);
-  return Number.isFinite(parsedSets) && parsedSets > 0 ? parsedSets : 4;
+  const title = String(exercise?.name || exercise?.exercise_name || exercise?.title || '');
+  const match = title.match(/\b(\d+)\s*sets?\b/i);
+  const parsedSets = Number.parseInt(match?.[1], 10);
+  return Number.isFinite(parsedSets) && parsedSets > 0 ? parsedSets : 3;
 }
 
 function toggleSet(button) {
