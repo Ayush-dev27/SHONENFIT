@@ -1082,7 +1082,7 @@ function populateWorkoutExercises() {
     const meta = document.createElement('p');
     meta.className = 'exercise-card-meta';
     const setCount = getExerciseSetCount(exercise);
-    meta.textContent = `${setCount} sets x ${exercise.reps || 'controlled reps'} - ${exercise.coaching_cue || 'Move with clean form and steady breathing.'}`;
+    meta.textContent = getExerciseCoachingCue(exercise);
 
     const setButtons = document.createElement('div');
     setButtons.className = 'set-buttons';
@@ -1116,6 +1116,11 @@ function getExerciseSetCount(exercise) {
   const match = title.match(/\b(\d+)\s*sets?\b/i);
   const parsedSets = Number.parseInt(match?.[1], 10);
   return Number.isFinite(parsedSets) && parsedSets > 0 ? parsedSets : 3;
+}
+
+function getExerciseCoachingCue(exercise) {
+  const cue = String(exercise?.coaching_cue || 'Move with clean form and steady breathing.').trim();
+  return cue.replace(/^\d+\s*sets?\s*[x×]\s*\d+(?:\s*(?:to|-)\s*\d+)?\s*reps?\s*[-–—:]\s*/i, '');
 }
 
 function toggleSet(button) {
