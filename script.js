@@ -1087,11 +1087,14 @@ function populateWorkoutExercises() {
     const setButtons = document.createElement('div');
     setButtons.className = 'set-buttons';
 
-    for (let setIndex = 1; setIndex <= setCount; setIndex += 1) {
+    const isRecovery = isRecoveryExercise(exercise);
+    const buttonCount = isRecovery ? 1 : setCount;
+
+    for (let setIndex = 1; setIndex <= buttonCount; setIndex += 1) {
       const setButton = document.createElement('button');
       setButton.type = 'button';
-      setButton.className = 'set-button set-btn';
-      setButton.textContent = `Set ${setIndex}`;
+      setButton.className = isRecovery ? 'recovery-btn' : 'set-button set-btn';
+      setButton.textContent = isRecovery ? 'Complete Session' : `Set ${setIndex}`;
       setButton.dataset.exerciseIndex = String(index);
       setButton.dataset.set = String(setIndex);
       setButton.setAttribute('aria-pressed', 'false');
@@ -1112,15 +1115,45 @@ function getAssignedWorkoutRoutine(workoutData = appState.latestWorkoutData) {
 }
 
 function getExerciseSetCount(exercise) {
-  const title = String(exercise?.name || exercise?.exercise_name || exercise?.title || '');
+  const title = getExerciseTitle(exercise);
   const match = title.match(/\b(\d+)\s*sets?\b/i);
   const parsedSets = Number.parseInt(match?.[1], 10);
   return Number.isFinite(parsedSets) && parsedSets > 0 ? parsedSets : 3;
 }
 
+function getExerciseTitle(exercise) {
+  return String(exercise?.name || exercise?.exercise_name || exercise?.title || '');
+}
+
+function isRecoveryExercise(exercise) {
+  const title = getExerciseTitle(exercise);
+  const hasExplicitSetCount = /\b\d+\s*sets?\b/i.test(title);
+  const recoveryKeywordPattern = /\b(?:min(?:ute)?s?|rest(?:oration)?|breathing|mobility|stretch(?:ing)?|arc|decompression|flow|opening)\b/i;
+
+  return recoveryKeywordPattern.test(title) || !hasExplicitSetCount;
+}
+
 function getExerciseCoachingCue(exercise) {
   const cue = String(exercise?.coaching_cue || 'Move with clean form and steady breathing.').trim();
-  return cue.replace(/^\d+\s*sets?\s*[x×]\s*\d+(?:\s*(?:to|-)\s*\d+)?\s*reps?\s*[-–—:]\s*/i, '');
+  const title = getExerciseTitle(exercise).toLowerCase();
+
+  if (isRecoveryExercise(exercise)) {
+    if (title.includes('breathing')) {
+      return 'Focus on deep 4-second nasal inhalations, 4-second holds, and slow 6-second exhales to down-regulate your central nervous system.';
+    }
+
+    if (/(mobility|flow|arc)/.test(title)) {
+      return 'Move smoothly through full range of motion without forcing pain. Breathe deeply into tight areas.';
+    }
+
+    if (/(stretch|decompression|opening)/.test(title)) {
+      return 'Hold gentle tension, exhale to release muscle tightness, and decompress joint structures.';
+    }
+
+    return 'Keep the pace restorative, maintain continuous nose breathing, and prioritize joint restoration.';
+  }
+
+  return cue.replace(/^\d+\s*sets?\s*[x\u00d7]\s*\d+(?:\s*(?:to|-)\s*\d+)?\s*reps?\s*[-\u2013\u2014:]\s*/i, '');
 }
 
 function toggleSet(button) {
@@ -1157,7 +1190,9 @@ function ensureWorkoutRuntimeStyles() {
     #exercise-cards-container .set-button.active,
     #exercise-cards-container .set-button.completed,
     #exercise-cards-container .set-btn.active,
-    #exercise-cards-container .set-btn.completed {
+    #exercise-cards-container .set-btn.completed,
+    #exercise-cards-container .recovery-btn.active,
+    #exercise-cards-container .recovery-btn.completed {
       background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
       border-color: var(--accent-primary);
       color: var(--bg-primary);
@@ -1564,7 +1599,7 @@ function launchAscensionOverlay(newGrade, completedSets, result) {
 // ============================================================================
 
 function captureWorkoutCompletionContext() {
-    const setButtons = document.querySelectorAll('#exercise-cards-container .set-btn');
+    const setButtons = document.querySelectorAll('#exercise-cards-container .set-btn, #exercise-cards-container .recovery-btn');
     const completedSetButtons = Array.from(setButtons).filter(button => button.classList.contains('completed'));
     
     // 1. Map out the granular set information for the BALANCE database logger

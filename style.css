@@ -1077,6 +1077,41 @@ p {
   font-weight: 900;
 }
 
+.recovery-btn {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 24px;
+  border: 2px solid var(--accent-primary);
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  white-space: nowrap;
+  transition: all 0.3s ease;
+}
+
+.recovery-btn:hover {
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  box-shadow: 0 0 14px rgba(255, 42, 81, 0.3);
+  color: var(--bg-primary);
+  transform: translateY(-1px);
+}
+
+.recovery-btn.completed {
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 20px rgba(255, 42, 81, 0.5);
+  color: var(--bg-primary);
+}
+
 /* Workout Footer */
 
 .workout-footer {
