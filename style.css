@@ -729,7 +729,7 @@ p {
 }
 
 .rank-badge-display::after {
-  content: 'GRADE 4';
+  content: none;
 }
 
 .rank-badge-display.grade-4 {
@@ -754,19 +754,11 @@ p {
   background: radial-gradient(circle, rgba(255, 42, 81, 0.5), transparent 68%);
 }
 
-.rank-badge-display.grade-3::after {
-  content: 'GRADE 3';
-}
-
 .rank-badge-display.grade-2 {
   background: linear-gradient(135deg, #231047, #7a4dff);
   border: 1px solid rgba(151, 114, 255, 0.95);
   color: #f4efff;
   box-shadow: 0 0 30px rgba(122, 77, 255, 0.5);
-}
-
-.rank-badge-display.grade-2::after {
-  content: 'GRADE 2';
 }
 
 .rank-badge-display.grade-1 {
@@ -776,20 +768,12 @@ p {
   box-shadow: 0 0 32px rgba(35, 213, 171, 0.45);
 }
 
-.rank-badge-display.grade-1::after {
-  content: 'GRADE 1';
-}
-
 .rank-badge-display.special-grade {
   animation: specialGradeAura 1.8s ease-in-out infinite;
   background: linear-gradient(135deg, #4b3400, #ffcc4d, #fff3b0);
   border: 1px solid rgba(255, 232, 128, 0.95);
   color: #1b1300;
   box-shadow: 0 0 30px rgba(255, 204, 77, 0.55), 0 0 70px rgba(255, 204, 77, 0.35);
-}
-
-.rank-badge-display.special-grade::after {
-  content: 'SPECIAL GRADE';
 }
 
 .status-notice {

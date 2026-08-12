@@ -27,6 +27,81 @@ CHARACTER_DISPLAY_NAMES = {
     'all-might': 'All Might (Prime)',
 }
 
+GRADE_THRESHOLDS = (
+    ('Special Grade', 10000),
+    ('Grade 1', 5000),
+    ('Grade 2', 2500),
+    ('Grade 3', 1000),
+    ('Grade 4', 0),
+)
+
+def calculate_tier_progress(total_exp):
+    total_exp = max(0, int(total_exp or 0))
+
+    for index, (grade, tier_base_exp) in enumerate(GRADE_THRESHOLDS):
+        if total_exp >= tier_base_exp:
+            if index == 0:
+                return {
+                    'current_grade': grade,
+                    'current_tier_exp': total_exp - tier_base_exp,
+                    'tier_base_exp': tier_base_exp,
+                    'tier_cost': 0,
+                    'xp_to_next_level': 0,
+                    'progress_percentage': 100,
+                }
+
+            next_tier_exp = GRADE_THRESHOLDS[index - 1][1]
+            tier_cost = next_tier_exp - tier_base_exp
+            current_tier_exp = total_exp - tier_base_exp
+            return {
+                'current_grade': grade,
+                'current_tier_exp': current_tier_exp,
+                'tier_base_exp': tier_base_exp,
+                'tier_cost': tier_cost,
+                'xp_to_next_level': next_tier_exp - total_exp,
+                'progress_percentage': round((current_tier_exp / tier_cost) * 100),
+            }
+
+def reconcile_legacy_exp(cursor, user_id, username):
+    account = cursor.execute(
+        'SELECT total_exp FROM users WHERE id = ?',
+        (user_id,)
+    ).fetchone()
+    recorded_exp = cursor.execute(
+        'SELECT COALESCE(SUM(exp_earned), 0) FROM workout_history WHERE user_id = ?',
+        (user_id,)
+    ).fetchone()[0]
+    stored_exp = int(account[0] or 0) if account else 0
+
+    if stored_exp > 0 or recorded_exp <= 0:
+        return stored_exp
+
+    tier_progress = calculate_tier_progress(recorded_exp)
+    cursor.execute(
+        'UPDATE users SET total_exp = ?, current_grade = ? WHERE id = ?',
+        (recorded_exp, tier_progress['current_grade'], user_id)
+    )
+    cursor.execute(
+        'UPDATE user_profiles SET total_exp = ?, current_grade = ? WHERE username = ?',
+        (recorded_exp, tier_progress['current_grade'], username)
+    )
+    return recorded_exp
+
+def build_saved_workout_payload(profile):
+    if not profile or not profile['selected_character'] or not profile['selected_universe']:
+        return None
+
+    return generate_custom_routine({
+        'selectedUniverse': profile['selected_universe'],
+        'selectedCharacter': profile['selected_character'],
+        'strategyGoal': profile['training_strategy'],
+        'age': profile['age'],
+        'height': profile['height_cm'],
+        'weight': profile['weight_kg'],
+        'medicalHistory': profile['medical_history'] or '',
+        'specialPreferences': profile['special_preferences'] or '',
+    })
+
 def ensure_database_tables():
     conn = sqlite3.connect(DATABASE_FILE)
     conn.execute('PRAGMA foreign_keys = ON')
@@ -282,7 +357,8 @@ def signup():
                 "age": age,
                 "weight": weight,
                 "height": height,
-                "current_grade": "Grade 4"
+                "current_grade": "Grade 4",
+                "total_exp": 0
             }
         }), 201
 
@@ -312,6 +388,19 @@ def login():
             (username,)
         ).fetchone()
 
+        if user and verify_password(password, user['password_hash']):
+            reconcile_legacy_exp(cursor, user['id'], user['username'])
+            conn.commit()
+            user = cursor.execute(
+                'SELECT id, username, password_hash, age, weight, height, current_grade, total_exp FROM users WHERE username = ?',
+                (username,)
+            ).fetchone()
+
+        profile = cursor.execute(
+            'SELECT * FROM user_profiles WHERE username = ? ORDER BY id DESC LIMIT 1',
+            (username,)
+        ).fetchone() if user else None
+
         conn.close()
 
         if not user or not verify_password(password, user['password_hash']):
@@ -323,14 +412,21 @@ def login():
         return jsonify({
             "status": "success",
             "message": "Logged in successfully.",
-            "user": {
+            "profile": {
                 "id": user['id'],
                 "username": user['username'],
                 "age": user['age'],
                 "weight": user['weight'],
                 "height": user['height'],
-                "current_grade": user['current_grade']
-            }
+                "current_grade": user['current_grade'],
+                "total_exp": user['total_exp'],
+                "selected_universe": profile['selected_universe'] if profile else None,
+                "selected_character": profile['selected_character'] if profile else None,
+                "training_strategy": profile['training_strategy'] if profile else None,
+                "medical_history": profile['medical_history'] if profile else None,
+                "special_preferences": profile['special_preferences'] if profile else None,
+            },
+            "workout_data": build_saved_workout_payload(profile),
         }), 200
 
     except Exception as e:
@@ -343,7 +439,40 @@ def create_profile():
         user_id = session.get('user_id')
         if not user_id:
             return jsonify({"status": "error", "message": "Unauthorized"}), 401
-        return jsonify({"status": "success", "user_id": user_id})
+
+        conn = sqlite3.connect(DATABASE_FILE)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        user = cursor.execute(
+            'SELECT id, username, age, weight, height, current_grade, total_exp FROM users WHERE id = ?',
+            (user_id,)
+        ).fetchone()
+        if user:
+            reconcile_legacy_exp(cursor, user['id'], user['username'])
+            conn.commit()
+            user = cursor.execute(
+                'SELECT id, username, age, weight, height, current_grade, total_exp FROM users WHERE id = ?',
+                (user_id,)
+            ).fetchone()
+        profile = cursor.execute(
+            'SELECT * FROM user_profiles WHERE username = ? ORDER BY id DESC LIMIT 1',
+            (user['username'],)
+        ).fetchone() if user else None
+        conn.close()
+
+        if not user:
+            return jsonify({"status": "error", "message": "User profile not found."}), 404
+
+        profile_data = dict(profile) if profile else {}
+        profile_data.update(dict(user))
+        profile_data.update(calculate_tier_progress(user['total_exp']))
+        return jsonify({
+            "status": "success",
+            "user_id": user_id,
+            "profile": profile_data,
+            "workout_data": build_saved_workout_payload(profile),
+            "current_streak": calculate_streak(user_id),
+        })
 
     try:
         data = request.get_json(silent=True) or {}
@@ -364,14 +493,23 @@ def create_profile():
         conn.execute('PRAGMA foreign_keys = ON')
         cursor = conn.cursor()
 
+        existing_account = cursor.execute(
+            'SELECT current_grade, total_exp FROM users WHERE username = ?',
+            (username,)
+        ).fetchone()
+        current_grade = existing_account[0] if existing_account else 'Grade 4'
+        total_exp = existing_account[1] if existing_account else 0
+
         cursor.execute('''
             INSERT INTO user_profiles (
                 username, selected_universe, selected_character, training_strategy,
-                age, height_cm, weight_kg, medical_history, special_preferences
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                age, height_cm, weight_kg, medical_history, special_preferences,
+                current_grade, total_exp
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             username, selected_universe, selected_character, training_strategy,
-            age, height, weight, medical_history, special_preferences
+            age, height, weight, medical_history, special_preferences,
+            current_grade, total_exp
         ))
 
         user_account_id = upsert_user_account(
@@ -380,10 +518,12 @@ def create_profile():
             age=age,
             weight=weight,
             height=height,
-            current_grade='Grade 4',
-            total_exp=0,
+            current_grade=current_grade,
+            total_exp=total_exp,
             password_hash=data.get('password_hash') or data.get('passwordHash')
         )
+        total_exp = reconcile_legacy_exp(cursor, user_account_id, username)
+        current_grade = calculate_tier_progress(total_exp)['current_grade']
 
         session['user_id'] = user_account_id
         session['username'] = username
@@ -396,7 +536,19 @@ def create_profile():
         return jsonify({
             "status": "success",
             "message": "Profile synced to database and custom pipeline initialized!",
-            "initial_grade": "Grade 4",
+            "initial_grade": current_grade,
+            "profile": {
+                "total_exp": total_exp,
+                "selected_universe": selected_universe,
+                "selected_character": selected_character,
+                "training_strategy": training_strategy,
+                "age": age,
+                "height": height,
+                "weight": weight,
+                "medical_history": medical_history,
+                "special_preferences": special_preferences,
+                **calculate_tier_progress(total_exp),
+            },
             "current_streak": calculate_streak(user_account_id),
             "workout_data": routine_payload
         }), 201
@@ -531,6 +683,7 @@ def complete_workout():
             current_grade=user['current_grade'],
             total_exp=user['total_exp']
         )
+        current_total_exp = reconcile_legacy_exp(cursor, user_account_id, user['username'])
 
         workout_logged_today = cursor.execute('''
             SELECT id
@@ -548,14 +701,10 @@ def complete_workout():
             }), 400
 
         new_exp = 250
-        current_total_exp = int(user['total_exp'] or 0)
         total_exp = current_total_exp + new_exp
 
-        grade_number = max(1, 4 - (total_exp // 1000))
-        current_grade = f"Grade {grade_number}"
-        xp_to_next_level = 1000 - (total_exp % 1000)
-        if xp_to_next_level == 1000:
-            xp_to_next_level = 0 if grade_number == 1 else 1000
+        tier_progress = calculate_tier_progress(total_exp)
+        current_grade = tier_progress['current_grade']
 
         paradigm = data.get('paradigm') or user['training_strategy'] or 'train-like'
 
@@ -600,10 +749,11 @@ def complete_workout():
 
         return jsonify({
             "status": "success",
-            "new_exp": new_exp,
+            "exp_gained": new_exp,
+            "new_exp": total_exp,
             "total_exp": total_exp,
             "current_grade": current_grade,
-            "xp_to_next_level": xp_to_next_level,
+            **tier_progress,
             "current_streak": current_streak
         }), 200
 
@@ -722,4 +872,3 @@ def dev_reset_today():
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000) 
-

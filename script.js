@@ -12,6 +12,7 @@ const API_LOGIN_ENDPOINT = 'http://127.0.0.1:5000/api/login';
 const API_WORKOUT_COMPLETE_ENDPOINT = 'http://127.0.0.1:5000/api/workout-complete';
 const API_WORKOUT_HISTORY_ENDPOINT = 'http://127.0.0.1:5000/api/workout-history';
 const TIMER_TOTAL_SECONDS = 90;
+const ACTIVE_PROFILE_STORAGE_KEY = 'shonenfit.activeProfile';
 
 const DEFAULT_PROFILE_VALUES = {
   age: '25',
@@ -25,11 +26,13 @@ const DEFAULT_PROFILE_VALUES = {
 function calculateGradeProgress(totalExp) {
     const thresholds = [
         { name: "Special Grade", minExp: 10000 },
-        { name: "Grade 1",      minExp: 6000  },
-        { name: "Grade 2",      minExp: 3000  },
+        { name: "Grade 1",      minExp: 5000  },
+        { name: "Grade 2",      minExp: 2500  },
         { name: "Grade 3",      minExp: 1000  },
         { name: "Grade 4",      minExp: 0     }
     ];
+
+    totalExp = Math.max(0, Number(totalExp) || 0);
 
     let currentTierIndex = thresholds.findIndex(t => totalExp >= t.minExp);
     let currentTier = thresholds[currentTierIndex];
@@ -405,18 +408,29 @@ function handleAuthSuccess(result = {}, submittedPayload = {}, mode = 'login') {
   showMainLandingPage();
   hidePathGate();
 
-  const profileData = result.profile || result.user || result;
-  const workoutData = normalizeWorkoutData(result.workout_data || profileData.workout_data);
+  const storedProfile = getStoredActiveProfile();
+  const backendProfile = result.profile || result.user || result;
+  const profileData = hasActivePathSelection(backendProfile)
+    ? backendProfile
+    : storedProfile?.profileData || backendProfile;
+  const workoutData = normalizeWorkoutData(result.workout_data || backendProfile.workout_data)
+    || normalizeWorkoutData(storedProfile?.workoutData);
   const hasSavedPathSelection = hasActivePathSelection(profileData);
 
-  if (submittedPayload.age || profileData.age) {
+  if (hasSavedPathSelection) {
+    appState.selectedUniverse = normalizeUniverseKey(profileData.selected_universe || profileData.selectedUniverse || profileData.universe);
+    appState.selectedCharacter = profileData.selected_character || profileData.selectedCharacter || profileData.character;
+    appState.selectedDirection = profileData.training_strategy || profileData.strategyGoal || appState.selectedDirection;
+  }
+
+  if (submittedPayload.age || profileData.age || profileData.total_exp !== undefined || profileData.totalExp !== undefined) {
         appState.userMetrics = {
             age: submittedPayload.age || profileData.age || null,
             height: submittedPayload.height || profileData.height || null,
             weight: submittedPayload.weight || profileData.weight || null,
             medicalHistory: profileData.medical_history || null,
             preferences: profileData.special_preferences || null,
-            totalExp: profileData.total_exp || profileData.totalExp || profileData.new_exp || 0
+            totalExp: Number(profileData.total_exp ?? profileData.totalExp ?? profileData.new_exp ?? 0)
         };
     } 
 
@@ -425,10 +439,14 @@ function handleAuthSuccess(result = {}, submittedPayload = {}, mode = 'login') {
     return;
   }
 
-  if (workoutData) {
-    appState.latestWorkoutData = workoutData;
-    renderDashboardSummary(workoutData);
+  if (!workoutData) {
+    navigateView('universe-view');
+    return;
   }
+
+  appState.latestWorkoutData = workoutData;
+  persistActiveProfile(profileData, workoutData);
+  renderDashboardSummary(workoutData);
 
   // Calculate full Shonen metrics using the loaded database EXP values
         const currentTotalExp = appState.userMetrics.totalExp || 0;
@@ -453,7 +471,25 @@ function hasActivePathSelection(profileData = {}) {
     || profileData.universe
     || '';
 
-  return Boolean(selectedCharacter || selectedUniverse);
+  return Boolean(selectedCharacter && selectedUniverse);
+}
+
+function getStoredActiveProfile() {
+  try {
+    const stored = localStorage.getItem(ACTIVE_PROFILE_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : null;
+  } catch (error) {
+    console.warn('[SHONENFIT] Could not restore the saved active profile.', error);
+    return null;
+  }
+}
+
+function persistActiveProfile(profileData, workoutData) {
+  try {
+    localStorage.setItem(ACTIVE_PROFILE_STORAGE_KEY, JSON.stringify({ profileData, workoutData }));
+  } catch (error) {
+    console.warn('[SHONENFIT] Could not save the active profile locally.', error);
+  }
 }
 
 function hidePathGate() {
@@ -1040,6 +1076,17 @@ function wireWorkoutRouteButton() {
 
 function accessWorkout() {
   if (!appState.latestWorkoutData) {
+    const storedProfile = getStoredActiveProfile();
+    const storedWorkoutData = normalizeWorkoutData(storedProfile?.workoutData);
+
+    if (storedWorkoutData && hasActivePathSelection(storedProfile.profileData)) {
+      appState.selectedUniverse = normalizeUniverseKey(storedProfile.profileData.selected_universe || storedProfile.profileData.selectedUniverse);
+      appState.selectedCharacter = storedProfile.profileData.selected_character || storedProfile.profileData.selectedCharacter;
+      appState.latestWorkoutData = storedWorkoutData;
+    }
+  }
+
+  if (!appState.latestWorkoutData) {
     alert('Generate your custom path first so the Flask engine can assign a live workout routine.');
     return;
   }
@@ -1508,15 +1555,11 @@ function applyRankBadgeState(grade) {
     const rankBadge = document.getElementById('rank-badge-display');
     if (!rankBadge) return;
 
-    // 1. Clear old rank classes safely
     rankBadge.classList.remove('grade-4', 'grade-3', 'grade-2', 'grade-1', 'special-grade');
-    
-    // 2. Add the new class so the CSS can draw the text layout automatically
-    const cleanGrade = grade.trim();
-    const formattedClass = cleanGrade.toLowerCase().replace(' ', '-');
-    rankBadge.classList.add(formattedClass);
+    const cleanGrade = String(grade || 'Grade 4').trim();
+    rankBadge.classList.add(normalizeGradeClass(cleanGrade));
+    rankBadge.textContent = `${cleanGrade.toUpperCase()} • ${appState.userMetrics.totalExp || 0} EXP`;
 
-    // 3. Update the descriptive milestone metrics text below the badge
     const statusNotice = document.querySelector('.status-notice');
     if (statusNotice && appState && appState.userMetrics) {
         // Fallback to 0 if the backend hasn't filled the property yet on rapid boot
@@ -1791,8 +1834,8 @@ async function submitWorkoutCompletion(event) {
     }
 
     // 1. Capture the new EXP from the backend and sync it into our global state
-        if (result.new_exp !== undefined) {
-            appState.userMetrics.totalExp = result.new_exp;
+        if (result.total_exp !== undefined) {
+            appState.userMetrics.totalExp = Number(result.total_exp);
         }
 
         // 2. Feed the total EXP to our math module to get the current rank specs
@@ -1881,21 +1924,20 @@ function getActiveCharacterId() {
 }
 
 function updateDashboardExpBoost(completedSets, progressionData = {}) {
-  const statusPill = document.querySelector('#dashboard-view .status-pill');
   const statusNotice = document.querySelector('#dashboard-view .status-notice');
   const summaryBox = document.getElementById('summary-box');
   let standingValue = document.getElementById('standing-value');
   let expValue = document.getElementById('exp-value');
   const currentGrade = progressionData.current_grade || 'Grade 4';
-  const totalExp = Number.isFinite(Number(progressionData.total_exp)) ? Number(progressionData.total_exp) : 250;
-  const newExp = Number.isFinite(Number(progressionData.new_exp)) ? Number(progressionData.new_exp) : 250;
+  const totalExp = Number.isFinite(Number(progressionData.total_exp))
+    ? Number(progressionData.total_exp)
+    : appState.userMetrics.totalExp || 0;
+  const newExp = Number.isFinite(Number(progressionData.exp_gained))
+    ? Number(progressionData.exp_gained)
+    : 0;
   const xpToNextLevel = Number.isFinite(Number(progressionData.xp_to_next_level))
     ? Number(progressionData.xp_to_next_level)
-    : Math.max(0, 1000 - (totalExp % 1000));
-
-  if (statusPill) {
-    statusPill.textContent = `${currentGrade.toUpperCase()} - ${totalExp} EXP`;
-  }
+    : calculateGradeProgress(totalExp).expNeededForNextTier;
 
   applyRankBadgeState(currentGrade);
 
