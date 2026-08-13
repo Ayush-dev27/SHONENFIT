@@ -433,6 +433,12 @@ def login():
         return jsonify({"status": "error", "message": str(e)}), 400
 
 
+@app.route('/api/logout', methods=['GET', 'POST'])
+def logout():
+    session.clear()
+    return jsonify({"status": "success", "message": "Session cleared successfully."}), 200
+
+
 @app.route('/api/profile', methods=['GET', 'POST'])
 def create_profile():
     if request.method == 'GET':

@@ -9,6 +9,7 @@
 const API_PROFILE_ENDPOINT = 'http://127.0.0.1:5000/api/profile';
 const API_SIGNUP_ENDPOINT = 'http://127.0.0.1:5000/api/signup';
 const API_LOGIN_ENDPOINT = 'http://127.0.0.1:5000/api/login';
+const API_LOGOUT_ENDPOINT = 'http://127.0.0.1:5000/api/logout';
 const API_WORKOUT_COMPLETE_ENDPOINT = 'http://127.0.0.1:5000/api/workout-complete';
 const API_WORKOUT_HISTORY_ENDPOINT = 'http://127.0.0.1:5000/api/workout-history';
 const TIMER_TOTAL_SECONDS = 90;
@@ -141,6 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
   installGlobalNavigationInterception();
   applyUniverseCardGraphics();
   wireAuthPortal();
+  wireLogoutButton();
   wireMetricsSubmission();
   wireWorkoutRouteButton();
   wireWorkoutControlButtons();
@@ -571,6 +573,44 @@ function setMainAppVisibility(isVisible) {
   }
 }
 
+function wireLogoutButton() {
+  const logoutButton = document.getElementById('logout-btn');
+  logoutButton?.addEventListener('click', logoutAndResetSession);
+}
+
+async function logoutAndResetSession() {
+  try {
+    await fetch(API_LOGOUT_ENDPOINT, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Accept': 'application/json' },
+    });
+  } catch (error) {
+    console.warn('[SHONENFIT] Logout request could not reach the server; clearing local session state.', error);
+  }
+
+  localStorage.removeItem(ACTIVE_PROFILE_STORAGE_KEY);
+  appState.selectedUniverse = null;
+  appState.selectedCharacter = null;
+  appState.selectedDirection = null;
+  appState.latestWorkoutData = null;
+  appState.isAuthenticated = false;
+  appState.userMetrics = {
+    age: null,
+    height: null,
+    weight: null,
+    medicalHistory: null,
+    preferences: null,
+    totalExp: 0,
+  };
+  previousGrade = 'Grade 4';
+  pauseRestTimer();
+  hidePathGate();
+  hideAuthPortal();
+  setMainAppVisibility(true);
+  navigateView('universe-view');
+}
+
 function showAuthError(message) {
   const portalCard = document.querySelector('#auth-portal-overlay .auth-portal-card');
   if (!portalCard) {
@@ -620,7 +660,10 @@ function installGlobalNavigationInterception() {
       if (target.id === 'submit-metrics-btn') {
         e.preventDefault();
         e.stopPropagation();
-        submitMetricsProfile();
+        submitMetricsProfile().catch((error) => {
+          console.error('[SHONENFIT] Custom path submission failed:', error);
+          restorePathGateAfterSubmissionError();
+        });
       } else {
         e.preventDefault();
       }
@@ -637,7 +680,12 @@ function wireMetricsSubmission() {
       e.preventDefault();
       e.stopPropagation();
 
-      await submitMetricsProfile();
+      try {
+        await submitMetricsProfile();
+      } catch (error) {
+        console.error('[SHONENFIT] Custom path submission failed:', error);
+        restorePathGateAfterSubmissionError();
+      }
     });
   }
 
@@ -646,7 +694,12 @@ function wireMetricsSubmission() {
       e.preventDefault();
       e.stopPropagation();
 
-      await submitMetricsProfile();
+      try {
+        await submitMetricsProfile();
+      } catch (error) {
+        console.error('[SHONENFIT] Custom path submission failed:', error);
+        restorePathGateAfterSubmissionError();
+      }
     });
   }
 }
@@ -658,9 +711,15 @@ async function submitMetricsProfile() {
 
   appState.isSubmitting = true;
   const payload = buildProfilePayload();
+  const selectionSection = document.getElementById('path-gate');
+  const dashboardSection = document.getElementById('dashboard-view');
   setSubmitLoadingState(true);
 
   try {
+    if (!selectionSection || !dashboardSection || !document.getElementById('summary-box')) {
+      throw new Error('Required onboarding or dashboard containers are missing.');
+    }
+
     const response = await fetch(API_PROFILE_ENDPOINT, {
       method: 'POST',
       headers: {
@@ -692,6 +751,7 @@ async function submitMetricsProfile() {
       weight: payload.weight,
       medicalHistory: payload.medicalHistory,
       preferences: payload.specialPreferences,
+      totalExp: Number(result.profile?.total_exp ?? result.total_exp ?? 0),
     };
     appState.selectedDirection = payload.strategyGoal;
 
@@ -705,13 +765,44 @@ async function submitMetricsProfile() {
     previousGrade = result.current_grade || result.initial_grade || previousGrade;
     applyRankBadgeState(previousGrade);
     renderDashboardStreak(result);
+    renderFatigueMetrics(result);
+    persistActiveProfile(result.profile || payload, workoutData);
+
+    dashboardSection.classList.remove('hidden');
+    dashboardSection.style.display = 'block';
+    dashboardSection.setAttribute('aria-hidden', 'false');
+    selectionSection.classList.add('hidden');
+    selectionSection.style.display = 'none';
+    selectionSection.setAttribute('aria-hidden', 'true');
     MapsToView('dashboard-view');
   } catch (error) {
     console.error('[SHONENFIT] Profile response processing failed:', error);
+    restorePathGateAfterSubmissionError();
     alert('ShonenFit could not safely process the generated workout. Check the console for the exact response issue.');
   } finally {
     appState.isSubmitting = false;
     setSubmitLoadingState(false);
+  }
+}
+
+function restorePathGateAfterSubmissionError() {
+  const selectionSection = document.getElementById('path-gate');
+  const dashboardSection = document.getElementById('dashboard-view');
+
+  if (dashboardSection) {
+    dashboardSection.classList.remove('active-view', 'active');
+    dashboardSection.classList.add('hidden');
+    dashboardSection.style.display = 'none';
+    dashboardSection.setAttribute('aria-hidden', 'true');
+  }
+
+  if (selectionSection) {
+    selectionSection.classList.remove('hidden');
+    selectionSection.style.display = 'block';
+    selectionSection.setAttribute('aria-hidden', 'false');
+    navigateView('path-gate');
+  } else {
+    navigateView('universe-view');
   }
 }
 
@@ -834,8 +925,9 @@ function setSubmitLoadingState(isLoading) {
 
 function renderDashboardSummary(workoutData) {
   const safeWorkoutData = normalizeWorkoutData(workoutData);
+  const dashboardSection = document.getElementById('dashboard-view');
   const summaryBox = document.getElementById('summary-box');
-  if (!summaryBox || !safeWorkoutData) {
+  if (!dashboardSection || !summaryBox || !safeWorkoutData) {
     return false;
   }
 
@@ -1987,7 +2079,7 @@ console.log('[SHONENFIT] Live backend application initialized');
 function renderFatigueMetrics(result) {
     // Locate the container where dashboard metric widgets live
     const dashboardContainer = document.querySelector('#dashboard-view .view-container') || document.querySelector('.view-container');
-    if (!dashboardContainer) return;
+    if (!dashboardContainer || !result || typeof result !== 'object') return;
 
     // Check if an existing fatigue widget is present; clear it if so to avoid duplicates
     let fatigueCard = document.getElementById('shonenfit-fatigue-card');
@@ -1997,6 +2089,8 @@ function renderFatigueMetrics(result) {
         // Inserting it cleanly as the first overview metric element
         dashboardContainer.insertBefore(fatigueCard, dashboardContainer.firstChild);
     }
+
+    if (!fatigueCard) return;
 
     // Safeguard values from the result object
     const ratio = result.fatigue_ratio !== undefined ? result.fatigue_ratio : 0.0;
