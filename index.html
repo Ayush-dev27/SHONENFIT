@@ -104,7 +104,8 @@
 <body>
 
   <!-- HERO VIEW -->
-  <section id="home" class="flow-view active-view">
+  <section id="onboarding-view" class="flow-view active-view">
+  <section id="home" class="onboarding-step active-onboarding-step">
     <header class="navbar">
       <div class="navbar-container">
         <div class="logo">
@@ -138,9 +139,8 @@
       </div>
     </section>
   </section>
-
   <!-- UNIVERSE SELECTION VIEW -->
-  <section id="universe-view" class="flow-view">
+  <section id="universe-view" class="onboarding-step">
     <div class="view-container">
       <h2 class="section-title">CHOOSE YOUR UNIVERSE</h2>
 
@@ -191,7 +191,7 @@
   </section>
 
   <!-- CHARACTER ARCHETYPE RECRUITMENT VIEW -->
-  <section id="character-view" class="flow-view">
+  <section id="character-view" class="onboarding-step">
     <div class="view-container">
       <h2 class="section-title">CHOOSE YOUR INSPIRATION</h2>
 
@@ -206,7 +206,7 @@
   </section>
 
   <!-- WARRIOR PATH GATE -->
-  <section id="path-gate" class="flow-view">
+  <section id="path-gate" class="onboarding-step">
     <div class="view-container form-container">
       <div class="form-card">
         <h2 class="section-title">CHOOSE YOUR PATH</h2>
@@ -259,6 +259,7 @@
       </div>
     </div>
   </section>
+  </section>
 
   <!-- TRAINING DASHBOARD VIEW -->
   <section id="dashboard-view" class="flow-view">
@@ -298,14 +299,14 @@
         </div>
 
         <div class="dashboard-actions">
-          <button class="btn btn-accent" onclick="navigateView('workout-active-view')">Access First Workout Routine</button>
+          <button id="access-workout-btn" class="btn btn-accent" type="button">Access Workout</button>
         </div>
       </div>
     </div>
   </section>
 
   <!-- ACTIVE TRAINING MISSION VIEW -->
-  <section id="workout-active-view" class="flow-view">
+  <section id="workout-view" class="flow-view">
     <div class="view-container">
       <div class="workout-header">
         <h2 class="section-title">ACTIVE TRAINING MISSION</h2>

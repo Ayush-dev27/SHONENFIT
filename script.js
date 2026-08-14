@@ -160,16 +160,38 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============================================================================
 
 function navigateView(viewId) {
+  const onboardingStepIds = ['home', 'universe-view', 'character-view', 'path-gate'];
+  const targetViewId = viewId;
+  const topLevelViewId = onboardingStepIds.includes(targetViewId) ? 'onboarding-view' : targetViewId;
+
   document.querySelectorAll('.flow-view').forEach((view) => {
     view.classList.remove('active-view');
     view.classList.remove('active');
+    view.style.display = 'none';
+    view.setAttribute('aria-hidden', 'true');
   });
 
-  const targetView = document.getElementById(viewId);
+  document.querySelectorAll('.onboarding-step').forEach((step) => {
+    step.classList.remove('active-onboarding-step');
+    step.style.display = 'none';
+    step.setAttribute('aria-hidden', 'true');
+  });
+
+  const targetView = document.getElementById(topLevelViewId);
   if (targetView) {
     targetView.classList.add('active-view');
     targetView.classList.add('active');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    targetView.style.display = 'block';
+    targetView.setAttribute('aria-hidden', 'false');
+
+    if (topLevelViewId === 'onboarding-view') {
+      const onboardingStep = document.getElementById(targetViewId) || document.getElementById('universe-view');
+      onboardingStep?.classList.add('active-onboarding-step');
+      onboardingStep?.style.removeProperty('display');
+      onboardingStep?.setAttribute('aria-hidden', 'false');
+    }
+
+    window.scrollTo(0, 0);
   }
 }
 
@@ -568,7 +590,7 @@ function setMainAppVisibility(isVisible) {
   if (isVisible) {
     const hasActiveView = document.querySelector('.flow-view.active-view, .flow-view.active');
     if (!hasActiveView) {
-      navigateView('dashboard-view');
+      navigateView('universe-view');
     }
   }
 }
@@ -768,13 +790,10 @@ async function submitMetricsProfile() {
     renderFatigueMetrics(result);
     persistActiveProfile(result.profile || payload, workoutData);
 
-    dashboardSection.classList.remove('hidden');
-    dashboardSection.style.display = 'block';
-    dashboardSection.setAttribute('aria-hidden', 'false');
-    selectionSection.classList.add('hidden');
-    selectionSection.style.display = 'none';
-    selectionSection.setAttribute('aria-hidden', 'true');
-    MapsToView('dashboard-view');
+    updateWorkoutPath();
+    populateWorkoutExercises();
+    resetRestTimer();
+    MapsToView('workout-view');
   } catch (error) {
     console.error('[SHONENFIT] Profile response processing failed:', error);
     restorePathGateAfterSubmissionError();
@@ -1152,8 +1171,7 @@ function wireWorkoutRouteButton() {
     return;
   }
 
-  const workoutButton = Array.from(dashboardView.querySelectorAll('button'))
-    .find((button) => button.textContent.trim() === 'Access First Workout Routine');
+  const workoutButton = document.getElementById('access-workout-btn');
 
   if (!workoutButton) {
     return;
@@ -1186,7 +1204,7 @@ function accessWorkout() {
   updateWorkoutPath();
   populateWorkoutExercises();
   resetRestTimer();
-  navigateView('workout-active-view');
+  navigateView('workout-view');
 }
 
 function updateWorkoutPath() {
@@ -1435,11 +1453,11 @@ function ensureWorkoutRuntimeStyles() {
 // ============================================================================
 
 function wireWorkoutControlButtons() {
-  const timerButton = document.querySelector('#workout-active-view .timer-button');
+  const timerButton = document.querySelector('#workout-view .timer-button');
   const completeButton = document.getElementById('complete-workout-btn')
-    || Array.from(document.querySelectorAll('#workout-active-view button'))
+    || Array.from(document.querySelectorAll('#workout-view button'))
       .find((button) => /COMPLETED TRAINING ARC/i.test(button.textContent));
-  const backButton = Array.from(document.querySelectorAll('#workout-active-view button'))
+  const backButton = Array.from(document.querySelectorAll('#workout-view button'))
     .find((button) => button.textContent.includes('Back to Dashboard'));
 
   if (timerButton) {
@@ -1554,7 +1572,7 @@ function renderTimer() {
 }
 
 function updateTimerButton(label) {
-  const timerButton = document.querySelector('#workout-active-view .timer-button');
+  const timerButton = document.querySelector('#workout-view .timer-button');
   if (!timerButton) {
     return;
   }
