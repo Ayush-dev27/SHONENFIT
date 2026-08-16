@@ -160,6 +160,11 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============================================================================
 
 function navigateView(viewId) {
+  if (viewId === 'auth-view') {
+    showAuthPortal();
+    return;
+  }
+
   const onboardingStepIds = ['home', 'universe-view', 'character-view', 'path-gate'];
   const targetViewId = viewId;
   const topLevelViewId = onboardingStepIds.includes(targetViewId) ? 'onboarding-view' : targetViewId;
@@ -601,22 +606,13 @@ function wireLogoutButton() {
 }
 
 async function logoutAndResetSession() {
-  try {
-    await fetch(API_LOGOUT_ENDPOINT, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Accept': 'application/json' },
-    });
-  } catch (error) {
-    console.warn('[SHONENFIT] Logout request could not reach the server; clearing local session state.', error);
-  }
-
   localStorage.removeItem(ACTIVE_PROFILE_STORAGE_KEY);
   appState.selectedUniverse = null;
   appState.selectedCharacter = null;
   appState.selectedDirection = null;
   appState.latestWorkoutData = null;
   appState.isAuthenticated = false;
+  appState.isSubmitting = false;
   appState.userMetrics = {
     age: null,
     height: null,
@@ -626,11 +622,21 @@ async function logoutAndResetSession() {
     totalExp: 0,
   };
   previousGrade = 'Grade 4';
+  pendingAscensionState = null;
   pauseRestTimer();
   hidePathGate();
-  hideAuthPortal();
-  setMainAppVisibility(true);
-  navigateView('universe-view');
+  clearAuthError();
+  navigateView('auth-view');
+
+  try {
+    await fetch(API_LOGOUT_ENDPOINT, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Accept': 'application/json' },
+    });
+  } catch (error) {
+    console.warn('[SHONENFIT] Logout request could not reach the server; clearing local session state.', error);
+  }
 }
 
 function showAuthError(message) {
