@@ -12,7 +12,6 @@ const API_LOGIN_ENDPOINT = 'http://127.0.0.1:5000/api/login';
 const API_LOGOUT_ENDPOINT = 'http://127.0.0.1:5000/api/logout';
 const API_WORKOUT_COMPLETE_ENDPOINT = 'http://127.0.0.1:5000/api/workout-complete';
 const API_WORKOUT_HISTORY_ENDPOINT = 'http://127.0.0.1:5000/api/workout-history';
-const TIMER_TOTAL_SECONDS = 90;
 const ACTIVE_PROFILE_STORAGE_KEY = 'shonenfit.activeProfile';
 
 const DEFAULT_PROFILE_VALUES = {
@@ -81,9 +80,6 @@ const appState = {
 const userSessionProfile = appState;
 window.userSessionProfile = userSessionProfile;
 
-let timerRunning = false;
-let timerInterval = null;
-let timeRemaining = TIMER_TOTAL_SECONDS;
 let audioContext = null;
 let previousGrade = 'Grade 4';
 let pendingAscensionState = null;
@@ -150,7 +146,6 @@ document.addEventListener('DOMContentLoaded', () => {
   wireAscensionOverlayControls();
   ensureWorkoutRuntimeStyles();
   bindSetTrackingSelectors();
-  initializeTimerDisplay();
   fetchWorkoutHistory();
   checkAuthSessionOnLoad();
 });
@@ -623,7 +618,6 @@ async function logoutAndResetSession() {
   };
   previousGrade = 'Grade 4';
   pendingAscensionState = null;
-  pauseRestTimer();
   hidePathGate();
   clearAuthError();
   navigateView('auth-view');
@@ -797,7 +791,6 @@ async function submitMetricsProfile() {
 
     updateWorkoutPath();
     populateWorkoutExercises();
-    resetRestTimer();
     MapsToView('workout-view');
   } catch (error) {
     console.error('[SHONENFIT] Profile response processing failed:', error);
@@ -1208,7 +1201,6 @@ function accessWorkout() {
 
   updateWorkoutPath();
   populateWorkoutExercises();
-  resetRestTimer();
   navigateView('workout-view');
 }
 

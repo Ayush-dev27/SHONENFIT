@@ -307,28 +307,12 @@
 
   <!-- ACTIVE TRAINING MISSION VIEW -->
   <section id="workout-view" class="flow-view">
-    <div class="view-container">
+    <div class="view-container workout-layout">
       <div class="workout-header">
         <h2 class="section-title">ACTIVE TRAINING MISSION</h2>
         <p class="workout-path" id="workout-path">Path: Unassigned Protocol</p>
       </div>
 
-      <!-- REST TIMER WIDGET -->
-      <div class="rest-timer-widget">
-        <h3 class="timer-title">Recovery Station</h3>
-        <div class="timer-display">
-          <div class="timer-clock" id="timer-clock">01:30</div>
-          <div class="timer-ring">
-            <svg class="timer-progress-ring" viewBox="0 0 100 100">
-              <circle cx="50" cy="50" r="45" class="timer-progress-bg"></circle>
-              <circle cx="50" cy="50" r="45" class="timer-progress-fill" id="timer-fill"></circle>
-            </svg>
-          </div>
-        </div>
-        <button class="btn btn-accent timer-button" onclick="toggleRestTimer()">Start Rest / Charge Focus</button>
-      </div>
-
-      <!-- INTERACTIVE EXERCISE LIST -->
       <div class="exercises-section">
         <h3 class="exercises-title">Your Training Arc</h3>
         <div class="exercise-cards-container" id="exercise-cards-container">
@@ -336,7 +320,6 @@
         </div>
       </div>
 
-      <!-- FOOTER ACTIONS -->
       <div class="workout-footer">
         <button class="btn btn-secondary" onclick="navigateView('dashboard-view')">← Back to Dashboard</button>
         <button id="complete-workout-btn" type="button" class="btn btn-accent" data-complete-workout="true">COMPLETED TRAINING ARC (CLAIM EXP)</button>
