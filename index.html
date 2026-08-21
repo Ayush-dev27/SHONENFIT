@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SHONENFIT - Become Your Hero</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="stylesheet" href="style.css">
   <style>
     #honesty-gate-modal {
@@ -330,59 +331,102 @@
   <div id="auth-gate" class="auth-gate">
     <div id="auth-portal-overlay" class="auth-portal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="auth-portal-title">
       <div class="auth-portal-card">
-      <p class="auth-kicker">SHONENFIT ACCESS GATE</p>
-      <h2 id="auth-portal-title" class="auth-title">Enter The Training Grounds</h2>
-      <p class="auth-subtitle">Secure your progression ledger before stepping into the next arc.</p>
+        <p class="auth-kicker">SHONENFIT ACCESS GATE</p>
+        <h2 id="auth-portal-title" class="auth-title">Enter The Training Grounds</h2>
+        <p class="auth-subtitle">Secure your progression ledger before stepping into the next arc.</p>
 
-      <input type="radio" name="auth-tab" id="auth-signup-tab" class="auth-tab-input" checked>
-      <input type="radio" name="auth-tab" id="auth-login-tab" class="auth-tab-input">
+        <!-- Social OAuth Section -->
+        <div class="auth-social-buttons">
+          <button type="button" id="btn-oauth-google" class="btn-oauth btn-oauth-google">
+            <svg class="oauth-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+            </svg>
+            <span>Continue with Google</span>
+          </button>
 
-      <div class="auth-tabs" role="tablist" aria-label="Authentication options">
-        <label for="auth-signup-tab" class="auth-tab-label">JOIN THE CORPS</label>
-        <label for="auth-login-tab" class="auth-tab-label">RESUME ARC</label>
+          <button type="button" id="btn-oauth-apple" class="btn-oauth btn-oauth-apple">
+            <svg class="oauth-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+              <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.87c.6-1.12.98-2.67.75-4.22-1.32.06-2.88.88-3.76 1.9-.55.63-1.04 1.66-.88 3.19 1.46.12 2.97-.73 3.89-1.87z"/>
+            </svg>
+            <span>Continue with Apple</span>
+          </button>
+        </div>
+
+        <!-- Sleek Line Divider -->
+        <div class="auth-divider">
+          <span>OR</span>
+        </div>
+
+        <!-- Collapsible Trigger Button -->
+        <button type="button" id="auth-collapse-toggle" class="auth-collapse-toggle" aria-expanded="false" aria-controls="auth-collapsible-section">
+          <span>Login using other methods</span>
+          <svg class="collapse-chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+
+        <!-- Collapsible Credentials Form Section (Hidden by default) -->
+        <div id="auth-collapsible-section" class="auth-collapsible-section" aria-hidden="true">
+          <div class="auth-collapsible-inner">
+            <input type="radio" name="auth-tab" id="auth-signup-tab" class="auth-tab-input">
+            <input type="radio" name="auth-tab" id="auth-login-tab" class="auth-tab-input" checked>
+
+            <div class="auth-tabs" role="tablist" aria-label="Authentication options">
+              <label for="auth-signup-tab" class="auth-tab-label">JOIN THE CORPS</label>
+              <label for="auth-login-tab" class="auth-tab-label">RESUME ARC</label>
+            </div>
+
+            <div class="auth-tab-panels">
+              <!-- Sign Up Form (JOIN THE CORPS) -->
+              <form id="signup-form" class="auth-form auth-signup-panel" autocomplete="off">
+                <div class="auth-field-group">
+                  <label for="signup-email">Callsign / Email</label>
+                  <input type="text" id="signup-email" name="username" class="auth-input" placeholder="Choose your callsign/email" required autocomplete="username">
+                </div>
+                <div class="auth-field-group">
+                  <label for="signup-password">Password</label>
+                  <input type="password" id="signup-password" name="password" class="auth-input" placeholder="Forge a secret seal" required autocomplete="new-password">
+                </div>
+                <div class="auth-field-grid-2col">
+                  <div class="auth-field-group">
+                    <label for="signup-age">Age</label>
+                    <input type="number" id="signup-age" name="age" class="auth-input" placeholder="25" min="13" required>
+                  </div>
+                  <div class="auth-field-group">
+                    <label for="signup-weight">Weight (kg)</label>
+                    <input type="number" id="signup-weight" name="weight" class="auth-input" placeholder="70" min="1" step="0.1" required>
+                  </div>
+                  <div class="auth-field-group full-width">
+                    <label for="signup-height">Height (cm)</label>
+                    <input type="number" id="signup-height" name="height" class="auth-input" placeholder="175" min="1" step="0.1" required>
+                  </div>
+                </div>
+                <button type="submit" id="auth-signup-submit-btn" class="auth-submit-btn">INITIALIZE CORPS PROFILE</button>
+              </form>
+
+              <!-- Login Form (RESUME ARC) -->
+              <form id="login-form" class="auth-form auth-login-panel auth-panel-active" autocomplete="on">
+                <div class="auth-field-group">
+                  <label for="login-email">Callsign / Email</label>
+                  <input type="text" id="login-email" name="username" class="auth-input" placeholder="Enter your callsign/email" required autocomplete="username">
+                </div>
+                <div class="auth-field-group">
+                  <label for="login-password">Password</label>
+                  <input type="password" id="login-password" name="password" class="auth-input" placeholder="Enter your secret seal" required autocomplete="current-password">
+                </div>
+                <button type="submit" id="auth-login-submit-btn" class="auth-submit-btn">RESUME TRAINING ARC</button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <!-- Inline Glowing Error Message Box -->
+        <div id="auth-error-message" class="auth-error-message" hidden aria-live="polite"></div>
       </div>
-
-      <div class="auth-tab-panels">
-        <form id="signup-form" class="auth-form auth-signup-panel" autocomplete="off">
-          <div class="auth-field-group">
-            <label for="signup-username">Username</label>
-            <input type="text" id="signup-username" name="username" class="auth-input" placeholder="Choose your callsign" required>
-          </div>
-          <div class="auth-field-group">
-            <label for="signup-password">Password</label>
-            <input type="password" id="signup-password" name="password" class="auth-input" placeholder="Forge a secret seal" required>
-          </div>
-          <div class="auth-field-grid">
-            <div class="auth-field-group">
-              <label for="signup-age">Age</label>
-              <input type="number" id="signup-age" name="age" class="auth-input" placeholder="25" min="13" required>
-            </div>
-            <div class="auth-field-group">
-              <label for="signup-weight">Weight</label>
-              <input type="number" id="signup-weight" name="weight" class="auth-input" placeholder="70 kg" min="1" step="0.1" required>
-            </div>
-            <div class="auth-field-group">
-              <label for="signup-height">Height</label>
-              <input type="number" id="signup-height" name="height" class="auth-input" placeholder="175 cm" min="1" step="0.1" required>
-            </div>
-          </div>
-        </form>
-
-        <form id="login-form" class="auth-form auth-login-panel" autocomplete="off">
-          <div class="auth-field-group">
-            <label for="login-username">Username</label>
-            <input type="text" id="login-username" name="username" class="auth-input" placeholder="Enter your callsign" required>
-          </div>
-          <div class="auth-field-group">
-            <label for="login-password">Password</label>
-            <input type="password" id="login-password" name="password" class="auth-input" placeholder="Enter your secret seal" required>
-          </div>
-        </form>
-      </div>
-
-      <button type="button" id="auth-submit-btn" class="auth-submit-btn">ENTER THE TRAINING GROUNDS</button>
     </div>
-  </div>
   </div>
 
   <div id="ascension-celebrate-overlay" class="ascension-celebrate-overlay hidden">

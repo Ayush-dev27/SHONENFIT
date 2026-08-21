@@ -3,6 +3,38 @@
    ============================================================================ */
 
 // ============================================================================
+// SUPABASE AUTH CONFIGURATION
+// ============================================================================
+
+const SUPABASE_URL = 'https://ndgsxsrqspdogwnaqzsm.supabase.co'; 
+const SUPABASE_ANON_KEY = 'sb_publishable_Z4rnNqk0P6LAt8aMMnu-6Q_ZjKWNUL8';
+
+let supabaseClient = null;
+
+function getSupabaseClient() {
+  if (supabaseClient) {
+    return supabaseClient;
+  }
+  if (typeof window !== 'undefined' && window.supabase && typeof window.supabase.createClient === 'function') {
+    try {
+      supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    } catch (err) {
+      console.warn('[SHONENFIT] Supabase client init notice:', err.message);
+    }
+  }
+  return supabaseClient;
+}
+
+function isSupabaseConfigured() {
+  return (
+    Boolean(SUPABASE_URL) &&
+    Boolean(SUPABASE_ANON_KEY) &&
+    !SUPABASE_URL.includes('YOUR_SUPABASE_PROJECT_ID') &&
+    !SUPABASE_ANON_KEY.includes('YOUR_SUPABASE_ANON_KEY')
+  );
+}
+
+// ============================================================================
 // STATE MANAGEMENT
 // ============================================================================
 
@@ -291,6 +323,56 @@ function applyUniverseCardGraphics() {
 // ============================================================================
 
 async function checkAuthSessionOnLoad() {
+  if (isSupabaseConfigured()) {
+    const client = getSupabaseClient();
+    if (client) {
+      try {
+        const { data: { session }, error } = await client.auth.getSession();
+        if (session && session.user) {
+          const user = session.user;
+          const meta = user.user_metadata || {};
+          const profilePayload = {
+            username: meta.username || user.email?.split('@')[0] || 'Warrior',
+            email: user.email,
+            age: meta.age || DEFAULT_PROFILE_VALUES.age,
+            weight: meta.weight || DEFAULT_PROFILE_VALUES.weight,
+            height: meta.height || DEFAULT_PROFILE_VALUES.height,
+            total_exp: meta.total_exp || 0,
+            selected_universe: meta.selected_universe,
+            selected_character: meta.selected_character,
+            training_strategy: meta.training_strategy,
+          };
+          handleAuthSuccess({ status: 'success', profile: profilePayload, user }, profilePayload, 'supabase-session');
+          return;
+        }
+
+        // Listen for Supabase OAuth redirects or auth state changes
+        client.auth.onAuthStateChange((event, session) => {
+          if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user && !appState.isAuthenticated) {
+            const user = session.user;
+            const meta = user.user_metadata || {};
+            const profilePayload = {
+              username: meta.username || user.email?.split('@')[0] || 'Warrior',
+              email: user.email,
+              age: meta.age || DEFAULT_PROFILE_VALUES.age,
+              weight: meta.weight || DEFAULT_PROFILE_VALUES.weight,
+              height: meta.height || DEFAULT_PROFILE_VALUES.height,
+              total_exp: meta.total_exp || 0,
+              selected_universe: meta.selected_universe,
+              selected_character: meta.selected_character,
+              training_strategy: meta.training_strategy,
+            };
+            handleAuthSuccess({ status: 'success', profile: profilePayload, user }, profilePayload, 'supabase-oauth');
+          } else if (event === 'SIGNED_OUT') {
+            appState.isAuthenticated = false;
+          }
+        });
+      } catch (err) {
+        console.info('[SHONENFIT] Supabase session probe notice:', err);
+      }
+    }
+  }
+
   try {
     const response = await fetch(API_PROFILE_ENDPOINT, {
       method: 'GET',
@@ -318,71 +400,274 @@ async function checkAuthSessionOnLoad() {
 }
 
 function wireAuthPortal() {
+  const googleOAuthBtn = document.getElementById('btn-oauth-google');
+  const appleOAuthBtn = document.getElementById('btn-oauth-apple');
+  const collapseToggle = document.getElementById('auth-collapse-toggle');
+  const collapsibleSection = document.getElementById('auth-collapsible-section');
   const signupForm = document.getElementById('signup-form');
   const loginForm = document.getElementById('login-form');
-  const authSubmitButton = document.getElementById('auth-submit-btn');
   const authTabs = document.querySelectorAll('input[name="auth-tab"]');
   const authTabLabels = document.querySelectorAll('.auth-tab-label');
 
-  syncAuthPortalScrollState();
+  // Google OAuth
+  googleOAuthBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    handleOAuthSignIn('google');
+  });
 
+  // Apple OAuth
+  appleOAuthBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    handleOAuthSignIn('apple');
+  });
+
+  // Collapsible toggle
+  collapseToggle?.addEventListener('click', (e) => {
+    e.preventDefault();
+    const isExpanded = collapseToggle.getAttribute('aria-expanded') === 'true';
+    const nextState = !isExpanded;
+    collapseToggle.setAttribute('aria-expanded', String(nextState));
+    collapseToggle.classList.toggle('expanded', nextState);
+    if (collapsibleSection) {
+      collapsibleSection.setAttribute('aria-hidden', String(!nextState));
+      collapsibleSection.classList.toggle('expanded', nextState);
+    }
+    clearAuthError();
+  });
+
+  // Tab switching
   authTabs.forEach((tab) => {
-    tab.addEventListener('change', syncAuthPortalScrollState);
+    tab.addEventListener('change', () => {
+      clearAuthError();
+      syncActiveAuthPanel();
+    });
   });
 
   authTabLabels.forEach((label) => {
     label.addEventListener('click', () => {
-      window.requestAnimationFrame(syncAuthPortalScrollState);
+      clearAuthError();
+      window.requestAnimationFrame(syncActiveAuthPanel);
     });
   });
 
+  // Form Submissions
   signupForm?.addEventListener('submit', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    submitAuthForm('signup');
+    submitSignupAuth();
   });
 
   loginForm?.addEventListener('submit', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    submitAuthForm('login');
-  });
-
-  authSubmitButton?.addEventListener('click', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const activeMode = document.getElementById('auth-login-tab')?.checked ? 'login' : 'signup';
-    submitAuthForm(activeMode);
+    submitLoginAuth();
   });
 }
 
-function syncAuthPortalScrollState() {
+function syncActiveAuthPanel() {
   const isLoginActive = document.getElementById('auth-login-tab')?.checked;
-  const activePanel = document.getElementById(isLoginActive ? 'login-form' : 'signup-form');
-  const inactivePanel = document.getElementById(isLoginActive ? 'signup-form' : 'login-form');
-  const authOverlay = document.getElementById('auth-portal-overlay');
+  const loginForm = document.getElementById('login-form');
+  const signupForm = document.getElementById('signup-form');
 
-  document.body?.style.setProperty('overflow-y', 'auto', 'important');
-
-  if (authOverlay) {
-    authOverlay.style.overflowY = 'auto';
-  }
-
-  inactivePanel?.classList.remove('auth-panel-active');
-
-  if (activePanel) {
-    activePanel.classList.add('auth-panel-active');
-    activePanel.style.overflowY = 'visible';
+  if (isLoginActive) {
+    loginForm?.classList.add('auth-panel-active');
+    signupForm?.classList.remove('auth-panel-active');
+  } else {
+    signupForm?.classList.add('auth-panel-active');
+    loginForm?.classList.remove('auth-panel-active');
   }
 }
 
-async function submitAuthForm(mode) {
+async function handleOAuthSignIn(provider) {
   clearAuthError();
-  setAuthLoadingState(true);
+  setSocialLoadingState(provider, true);
 
-  const payload = mode === 'signup' ? buildSignupPayload() : buildLoginPayload();
+  if (!isSupabaseConfigured()) {
+    setSocialLoadingState(provider, false);
+    showAuthError(
+      `Supabase project configuration required for ${provider.toUpperCase()} login. Please provide valid SUPABASE_URL and SUPABASE_ANON_KEY in script.js.`
+    );
+    return;
+  }
+
+  const client = getSupabaseClient();
+  if (!client) {
+    setSocialLoadingState(provider, false);
+    showAuthError('Supabase client failed to initialize. Please check network connection for Supabase CDN.');
+    return;
+  }
+
+  try {
+    const redirectUrl = window.location.origin + window.location.pathname;
+    const { data, error } = await client.auth.signInWithOAuth({
+      provider: provider,
+      options: {
+        redirectTo: redirectUrl
+      }
+    });
+
+    if (error) {
+      throw error;
+    }
+  } catch (error) {
+    console.error(`[SHONENFIT] ${provider} OAuth error:`, error);
+    showAuthError(error.message || `Failed to sign in with ${provider}.`);
+  } finally {
+    setSocialLoadingState(provider, false);
+  }
+}
+
+async function submitLoginAuth() {
+  clearAuthError();
+  setFormLoadingState('login', true);
+
+  const emailOrUsername = (
+    document.getElementById('login-email')?.value ||
+    document.getElementById('login-username')?.value ||
+    ''
+  ).trim();
+  const password = document.getElementById('login-password')?.value || '';
+
+  if (!emailOrUsername || !password) {
+    showAuthError('Please enter both your callsign/email and secret seal.');
+    setFormLoadingState('login', false);
+    return;
+  }
+
+  if (isSupabaseConfigured()) {
+    const client = getSupabaseClient();
+    if (client) {
+      try {
+        const email = emailOrUsername.includes('@')
+          ? emailOrUsername
+          : `${emailOrUsername.toLowerCase().replace(/[^a-z0-9_]/g, '')}@shonenfit.local`;
+
+        const { data, error } = await client.auth.signInWithPassword({
+          email: email,
+          password: password,
+        });
+
+        if (error) {
+          throw error;
+        }
+
+        const user = data.user || {};
+        const meta = user.user_metadata || {};
+        const profile = {
+          username: meta.username || user.email?.split('@')[0] || emailOrUsername,
+          email: user.email || email,
+          age: meta.age || DEFAULT_PROFILE_VALUES.age,
+          weight: meta.weight || DEFAULT_PROFILE_VALUES.weight,
+          height: meta.height || DEFAULT_PROFILE_VALUES.height,
+          total_exp: meta.total_exp || 0,
+          selected_universe: meta.selected_universe,
+          selected_character: meta.selected_character,
+          training_strategy: meta.training_strategy,
+        };
+
+        handleAuthSuccess({ status: 'success', profile, user }, profile, 'login');
+        return;
+      } catch (error) {
+        console.error('[SHONENFIT] Supabase login error:', error);
+        showAuthError(error.message || 'Invalid callsign/email or secret seal.');
+        return;
+      } finally {
+        setFormLoadingState('login', false);
+      }
+    }
+  }
+
+  // Fallback to local server API when Supabase placeholder keys are present
+  await submitLocalServerAuth('login', { username: emailOrUsername, password });
+}
+
+async function submitSignupAuth() {
+  clearAuthError();
+  setFormLoadingState('signup', true);
+
+  const emailOrUsername = (
+    document.getElementById('signup-email')?.value ||
+    document.getElementById('signup-username')?.value ||
+    ''
+  ).trim();
+  const password = document.getElementById('signup-password')?.value || '';
+  const age = document.getElementById('signup-age')?.value || DEFAULT_PROFILE_VALUES.age;
+  const weight = document.getElementById('signup-weight')?.value || DEFAULT_PROFILE_VALUES.weight;
+  const height = document.getElementById('signup-height')?.value || DEFAULT_PROFILE_VALUES.height;
+
+  if (!emailOrUsername || !password) {
+    showAuthError('Please provide a callsign/email and forge a secret seal.');
+    setFormLoadingState('signup', false);
+    return;
+  }
+
+  if (password.length < 6) {
+    showAuthError('Secret seal must be at least 6 characters in length.');
+    setFormLoadingState('signup', false);
+    return;
+  }
+
+  if (isSupabaseConfigured()) {
+    const client = getSupabaseClient();
+    if (client) {
+      try {
+        const username = emailOrUsername.includes('@')
+          ? emailOrUsername.split('@')[0]
+          : emailOrUsername;
+        const email = emailOrUsername.includes('@')
+          ? emailOrUsername
+          : `${emailOrUsername.toLowerCase().replace(/[^a-z0-9_]/g, '')}@shonenfit.local`;
+
+        const { data, error } = await client.auth.signUp({
+          email: email,
+          password: password,
+          options: {
+            data: {
+              username: username,
+              age: Number(age) || 25,
+              weight: Number(weight) || 70,
+              height: Number(height) || 175,
+            }
+          }
+        });
+
+        if (error) {
+          throw error;
+        }
+
+        const user = data.user || {};
+        const meta = user.user_metadata || {};
+        const profile = {
+          username: meta.username || username,
+          email: user.email || email,
+          age: meta.age || age,
+          weight: meta.weight || weight,
+          height: meta.height || height,
+          total_exp: 0,
+        };
+
+        if (data.session) {
+          handleAuthSuccess({ status: 'success', profile, user }, profile, 'signup');
+        } else {
+          showAuthError('Corps profile initialized! If email confirmation is enabled, check your inbox before logging in.');
+        }
+        return;
+      } catch (error) {
+        console.error('[SHONENFIT] Supabase signup error:', error);
+        showAuthError(error.message || 'Could not initialize corps profile.');
+        return;
+      } finally {
+        setFormLoadingState('signup', false);
+      }
+    }
+  }
+
+  // Fallback to local server API when Supabase placeholder keys are present
+  await submitLocalServerAuth('signup', { username: emailOrUsername, password, age, weight, height });
+}
+
+async function submitLocalServerAuth(mode, payload) {
   const endpoint = mode === 'signup' ? API_SIGNUP_ENDPOINT : API_LOGIN_ENDPOINT;
-
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -402,28 +687,11 @@ async function submitAuthForm(mode) {
 
     handleAuthSuccess(result, payload, mode);
   } catch (error) {
-    console.error('[SHONENFIT] Auth request failed:', error);
-    showAuthError('Could not reach the auth server. Make sure Flask is running on http://127.0.0.1:5000.');
+    console.error('[SHONENFIT] Local auth failed:', error);
+    showAuthError('Could not reach the auth server. Configure live Supabase keys in script.js or ensure the Flask backend is running on http://127.0.0.1:5000.');
   } finally {
-    setAuthLoadingState(false);
+    setFormLoadingState(mode, false);
   }
-}
-
-function buildSignupPayload() {
-  return {
-    username: document.getElementById('signup-username')?.value.trim() || 'Recruit',
-    password: document.getElementById('signup-password')?.value || '',
-    age: document.getElementById('signup-age')?.value || DEFAULT_PROFILE_VALUES.age,
-    weight: document.getElementById('signup-weight')?.value || DEFAULT_PROFILE_VALUES.weight,
-    height: document.getElementById('signup-height')?.value || DEFAULT_PROFILE_VALUES.height,
-  };
-}
-
-function buildLoginPayload() {
-  return {
-    username: document.getElementById('login-username')?.value.trim() || '',
-    password: document.getElementById('login-password')?.value || '',
-  };
 }
 
 function handleAuthSuccess(result = {}, submittedPayload = {}, mode = 'login') {
@@ -620,6 +888,18 @@ async function logoutAndResetSession() {
   pendingAscensionState = null;
   hidePathGate();
   clearAuthError();
+
+  if (isSupabaseConfigured()) {
+    const client = getSupabaseClient();
+    if (client) {
+      try {
+        await client.auth.signOut();
+      } catch (e) {
+        console.warn('[SHONENFIT] Supabase signOut notice:', e);
+      }
+    }
+  }
+
   navigateView('auth-view');
 
   try {
@@ -634,23 +914,23 @@ async function logoutAndResetSession() {
 }
 
 function showAuthError(message) {
-  const portalCard = document.querySelector('#auth-portal-overlay .auth-portal-card');
-  if (!portalCard) {
-    alert(message);
-    return;
-  }
-
   let errorBox = document.getElementById('auth-error-message');
   if (!errorBox) {
-    errorBox = document.createElement('div');
-    errorBox.id = 'auth-error-message';
-    errorBox.className = 'auth-error-message';
-    const submitButton = document.getElementById('auth-submit-btn');
-    portalCard.insertBefore(errorBox, submitButton || null);
+    const portalCard = document.querySelector('#auth-portal-overlay .auth-portal-card');
+    if (portalCard) {
+      errorBox = document.createElement('div');
+      errorBox.id = 'auth-error-message';
+      errorBox.className = 'auth-error-message';
+      portalCard.appendChild(errorBox);
+    } else {
+      alert(message);
+      return;
+    }
   }
 
   errorBox.hidden = false;
   errorBox.textContent = message;
+  errorBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function clearAuthError() {
@@ -661,14 +941,41 @@ function clearAuthError() {
   }
 }
 
-function setAuthLoadingState(isLoading) {
-  const authSubmitButton = document.getElementById('auth-submit-btn');
-  if (!authSubmitButton) {
-    return;
-  }
+function setSocialLoadingState(provider, isLoading) {
+  const btn = document.getElementById(`btn-oauth-${provider}`);
+  if (!btn) return;
 
-  authSubmitButton.disabled = isLoading;
-  authSubmitButton.textContent = isLoading ? 'OPENING GATE...' : 'ENTER THE TRAINING GROUNDS';
+  btn.disabled = isLoading;
+  const label = btn.querySelector('span');
+  if (label) {
+    if (isLoading) {
+      label.textContent = `Connecting with ${provider === 'google' ? 'Google' : 'Apple'}...`;
+    } else {
+      label.textContent = `Continue with ${provider === 'google' ? 'Google' : 'Apple'}`;
+    }
+  }
+}
+
+function setFormLoadingState(mode, isLoading) {
+  const submitBtn = mode === 'signup'
+    ? document.getElementById('auth-signup-submit-btn')
+    : document.getElementById('auth-login-submit-btn');
+
+  if (!submitBtn) return;
+
+  submitBtn.disabled = isLoading;
+  if (mode === 'signup') {
+    submitBtn.textContent = isLoading ? 'INITIALIZING PROFILE...' : 'INITIALIZE CORPS PROFILE';
+  } else {
+    submitBtn.textContent = isLoading ? 'VERIFYING CREDENTIALS...' : 'RESUME TRAINING ARC';
+  }
+}
+
+function setAuthLoadingState(isLoading) {
+  const authSubmitButton = document.getElementById('auth-submit-btn') || document.getElementById('auth-login-submit-btn');
+  if (authSubmitButton) {
+    authSubmitButton.disabled = isLoading;
+  }
 }
 
 // ============================================================================
