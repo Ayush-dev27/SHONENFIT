@@ -42,7 +42,8 @@ const API_PROFILE_ENDPOINT = 'http://127.0.0.1:5000/api/profile';
 const API_SIGNUP_ENDPOINT = 'http://127.0.0.1:5000/api/signup';
 const API_LOGIN_ENDPOINT = 'http://127.0.0.1:5000/api/login';
 const API_LOGOUT_ENDPOINT = 'http://127.0.0.1:5000/api/logout';
-const API_WORKOUT_COMPLETE_ENDPOINT = 'http://127.0.0.1:5000/api/workout-complete';
+const API_WORKOUT_COMPLETE_ENDPOINT = 'http://127.0.0.1:5000/api/complete-workout';
+const API_WORKOUT_COMPLETE_LEGACY_ENDPOINT = 'http://127.0.0.1:5000/api/workout-complete';
 const API_WORKOUT_HISTORY_ENDPOINT = 'http://127.0.0.1:5000/api/workout-history';
 const ACTIVE_PROFILE_STORAGE_KEY = 'shonenfit.activeProfile';
 
@@ -99,13 +100,15 @@ const appState = {
   latestWorkoutData: null,
   isSubmitting: false,
   isAuthenticated: false,
+  completedWorkoutsCount: 0,
   userMetrics: {
     age: null,
     height: null,
     weight: null,
     medicalHistory: null,
     preferences: null, 
-    totalExp: 0
+    totalExp: 0,
+    completedWorkoutsCount: 0,
   },
 };
 
@@ -715,6 +718,10 @@ function handleAuthSuccess(result = {}, submittedPayload = {}, mode = 'login') {
     appState.selectedDirection = profileData.training_strategy || profileData.strategyGoal || appState.selectedDirection;
   }
 
+  if (result.completed_workouts_count !== undefined || profileData.completed_workouts_count !== undefined) {
+    appState.completedWorkoutsCount = Number(result.completed_workouts_count ?? profileData.completed_workouts_count ?? 0);
+  }
+
   if (submittedPayload.age || profileData.age || profileData.total_exp !== undefined || profileData.totalExp !== undefined) {
         appState.userMetrics = {
             age: submittedPayload.age || profileData.age || null,
@@ -722,7 +729,8 @@ function handleAuthSuccess(result = {}, submittedPayload = {}, mode = 'login') {
             weight: submittedPayload.weight || profileData.weight || null,
             medicalHistory: profileData.medical_history || null,
             preferences: profileData.special_preferences || null,
-            totalExp: Number(profileData.total_exp ?? profileData.totalExp ?? profileData.new_exp ?? 0)
+            totalExp: Number(profileData.total_exp ?? profileData.totalExp ?? profileData.new_exp ?? 0),
+            completedWorkoutsCount: appState.completedWorkoutsCount,
         };
     } 
 
@@ -1073,6 +1081,10 @@ async function submitMetricsProfile() {
       return;
     }
 
+    if (result.completed_workouts_count !== undefined) {
+      appState.completedWorkoutsCount = Number(result.completed_workouts_count);
+    }
+
     appState.latestWorkoutData = workoutData;
     appState.userMetrics = {
       age: payload.age,
@@ -1081,6 +1093,7 @@ async function submitMetricsProfile() {
       medicalHistory: payload.medicalHistory,
       preferences: payload.specialPreferences,
       totalExp: Number(result.profile?.total_exp ?? result.total_exp ?? 0),
+      completedWorkoutsCount: appState.completedWorkoutsCount,
     };
     appState.selectedDirection = payload.strategyGoal;
 
@@ -1145,13 +1158,31 @@ function normalizeWorkoutData(workoutData) {
   }
 
   const routine = getRoutineArrayFromWorkoutData(workoutData);
+  const trackKey = safeText(workoutData.daily_track || workoutData.dailyTrack || workoutData.track, 'track_a');
+  const trackIndex = typeof workoutData.track_index === 'number'
+    ? workoutData.track_index
+    : (typeof workoutData.trackIndex === 'number' ? workoutData.trackIndex : getTrackIndexFromKey(trackKey));
+  const trackName = safeText(workoutData.track_name || workoutData.trackName, `Track ${String.fromCharCode(65 + trackIndex)}`);
 
   return {
     character_alignment: safeText(workoutData.character_alignment, appState.selectedCharacter || 'UNASSIGNED'),
     core_focus_directive: safeText(workoutData.core_focus_directive, 'Adaptive Training Protocol'),
     strategy_paradigm: safeText(workoutData.strategy_paradigm, appState.selectedDirection || 'train-like'),
+    daily_track: trackKey,
+    track_index: trackIndex,
+    track_letter: safeText(workoutData.track_letter || workoutData.trackLetter, String.fromCharCode(65 + trackIndex)),
+    track_name: trackName,
+    completed_workouts_count: Number(workoutData.completed_workouts_count ?? workoutData.completedWorkoutsCount ?? appState.completedWorkoutsCount ?? 0),
     assigned_workout_routine: routine.map(normalizeExercise),
   };
+}
+
+function getTrackIndexFromKey(trackKey) {
+  const normalized = String(trackKey || '').toLowerCase();
+  if (normalized.includes('track_b') || normalized.endsWith('_b') || normalized === 'b') return 1;
+  if (normalized.includes('track_c') || normalized.endsWith('_c') || normalized === 'c') return 2;
+  if (normalized.includes('track_d') || normalized.endsWith('_d') || normalized === 'd') return 3;
+  return 0;
 }
 
 function getRoutineArrayFromWorkoutData(workoutData) {
@@ -1205,6 +1236,7 @@ function buildProfilePayload() {
     medicalHistory: getInputValue('user-history', 'medical') || DEFAULT_PROFILE_VALUES.medicalHistory,
     specialPreferences: getInputValue('user-prefs', 'preferences') || DEFAULT_PROFILE_VALUES.specialPreferences,
     strategyGoal,
+    completed_workouts_count: appState.completedWorkoutsCount || 0,
   };
 
   Object.assign(userSessionProfile, payload);
@@ -1259,11 +1291,13 @@ function renderDashboardSummary(workoutData) {
 
   const targetValue = safeWorkoutData.character_alignment;
   const strategyValue = safeWorkoutData.strategy_paradigm;
+  const trackValue = safeWorkoutData.track_name || (safeWorkoutData.daily_track ? `Track ${safeWorkoutData.daily_track.replace('track_', '').toUpperCase()}` : 'Track A');
   const focusValue = safeWorkoutData.core_focus_directive;
   const routine = getAssignedWorkoutRoutine(safeWorkoutData);
 
   summaryBox.appendChild(createSummaryItem('Selected Target', 'summary-target', targetValue));
   summaryBox.appendChild(createSummaryItem('Strategy Selected', 'summary-strategy', formatStrategyLabel(strategyValue)));
+  summaryBox.appendChild(createSummaryItem('Training Track', 'summary-track', trackValue));
   summaryBox.appendChild(createSummaryItem('Core Focus Directive', 'summary-focus', focusValue));
 
   const routineContainer = document.createElement('div');
@@ -1376,6 +1410,11 @@ async function fetchWorkoutHistory() {
       console.error('[SHONENFIT] Workout history fetch failed:', history);
       renderWorkoutHistory([]);
       return;
+    }
+
+    appState.completedWorkoutsCount = history.length;
+    if (appState.userMetrics) {
+      appState.userMetrics.completedWorkoutsCount = history.length;
     }
 
     renderWorkoutHistory(history);
@@ -1520,7 +1559,8 @@ function updateWorkoutPath() {
   const workoutData = appState.latestWorkoutData || {};
   const character = workoutData.character_alignment || appState.selectedCharacter || 'UNASSIGNED';
   const focus = workoutData.core_focus_directive || 'Live Training Protocol';
-  workoutPath.textContent = `Path: ${character} - ${focus}`;
+  const trackLabel = workoutData.track_name || (workoutData.daily_track ? `Track ${workoutData.daily_track.replace('track_', '').toUpperCase()}` : 'Track A');
+  workoutPath.textContent = `Path: ${character} (${trackLabel}) - ${focus}`;
 }
 
 function populateWorkoutExercises() {
@@ -2013,43 +2053,67 @@ function wireAscensionOverlayControls() {
     overlay.classList.add('hidden');
 
     if (!pendingAscensionState) {
+      navigateView('dashboard-view');
       return;
     }
 
-    const { completedSets, result } = pendingAscensionState;
-    previousGrade = result.current_grade;
+    const { completedSets, result, newGrade } = pendingAscensionState;
+    previousGrade = newGrade || result.current_grade || previousGrade;
     updateDashboardExpBoost(completedSets, result);
     renderDashboardStreak(result);
     fetchWorkoutHistory();
     resetRestTimer();
+
+    if (appState.latestWorkoutData) {
+      renderDashboardSummary(appState.latestWorkoutData);
+      updateWorkoutPath();
+      populateWorkoutExercises();
+    }
+
     navigateView('dashboard-view');
     pendingAscensionState = null;
   });
 }
 
-function launchAscensionOverlay(newGrade, completedSets, result) {
+function launchAscensionOverlay(newGrade, completedSets, result = {}, isRankUp = true) {
   const overlay = document.getElementById('ascension-celebrate-overlay');
   const gradeEmblem = document.getElementById('ascension-grade-emblem');
+  const title = document.getElementById('ascension-title');
+  const kicker = document.querySelector('#ascension-celebrate-overlay .ascension-kicker');
   const copy = document.querySelector('#ascension-celebrate-overlay .ascension-copy');
+  const claimButton = document.getElementById('claim-new-power-btn');
 
   if (!overlay || !gradeEmblem) {
     return false;
   }
 
-  pendingAscensionState = { completedSets, result };
+  pendingAscensionState = { completedSets, result, newGrade };
   applyRankBadgeState(newGrade);
 
-  gradeEmblem.className = `ascension-grade-emblem ${normalizeGradeClass(newGrade)}`;
-  gradeEmblem.textContent = newGrade.toUpperCase();
+  const expGained = result.exp || result.exp_earned || result.exp_gained || result.new_exp || 250;
+  const nextTrackName = result.workout_data?.track_name
+    || (result.new_track ? `Track ${result.new_track.replace('track_', '').toUpperCase()}` : 'Next Training Arc');
 
-  if (copy) {
-        copy.textContent = `You have unlocked ${newGrade}. Claim your new power to return to the dashboard.`;
-    } // <-- Enforces closure of the copy check
+  if (isRankUp) {
+    if (kicker) kicker.textContent = 'Training Arc Breakthrough';
+    if (title) title.textContent = 'RANK ASCENDED';
+    gradeEmblem.className = `ascension-grade-emblem ${normalizeGradeClass(newGrade)}`;
+    gradeEmblem.textContent = newGrade.toUpperCase();
+    if (copy) copy.textContent = `You have ascended to ${newGrade}! +${expGained} EXP claimed. Next up: ${nextTrackName}.`;
+    if (claimButton) claimButton.textContent = 'CLAIM NEW POWER';
+  } else {
+    if (kicker) kicker.textContent = 'Training Arc Mastered';
+    if (title) title.textContent = 'POWER EXPANDED';
+    gradeEmblem.className = `ascension-grade-emblem ${normalizeGradeClass(newGrade)}`;
+    gradeEmblem.textContent = `+${expGained} EXP`;
+    if (copy) copy.textContent = `Completed training arc! Gained ${expGained} EXP towards ${newGrade}. Unlocked ${nextTrackName}!`;
+    if (claimButton) claimButton.textContent = 'RETURN TO DASHBOARD';
+  }
 
-    playAscensionChime();
-    overlay.classList.remove('hidden');
-    return true;
-} // <-- Enforces closure of launchAscensionOverlay 
+  playAscensionChime();
+  overlay.classList.remove('hidden');
+  return true;
+} 
 
 // ============================================================================
 // MISSION COMPLETION
@@ -2205,6 +2269,37 @@ function showRestDayMotivationBanner() {
   }, 6500);
 }
 
+async function getActiveUserId() {
+  // 1. Check live Supabase auth session if available
+  if (isSupabaseConfigured()) {
+    const client = getSupabaseClient();
+    if (client) {
+      try {
+        const { data } = await client.auth.getSession();
+        if (data?.session?.user?.id) {
+          return data.session.user.id;
+        }
+      } catch (err) {
+        console.info('[SHONENFIT] Supabase session lookup notice:', err);
+      }
+    }
+  }
+
+  // 2. Check userMetrics id
+  if (appState.userMetrics?.userId || appState.userMetrics?.id) {
+    return String(appState.userMetrics.userId || appState.userMetrics.id);
+  }
+
+  // 3. Check stored active profile
+  const stored = getStoredActiveProfile();
+  if (stored?.profileData?.id || stored?.profileData?.user_id) {
+    return String(stored.profileData.id || stored.profileData.user_id);
+  }
+
+  // 4. Default to username or guest
+  return appState.userMetrics?.username || 'guest_user';
+}
+
 async function submitWorkoutCompletion(event) { 
   event?.preventDefault();
   event?.stopPropagation();
@@ -2214,16 +2309,23 @@ async function submitWorkoutCompletion(event) {
   const completedSets = Number(completionContext?.sets_completed || 0);
   const totalSets = Number(completionContext?.total_sets || 0);
 
-  if (completedSets === 0) {
-    alert('Focus, Hero! Log at least one completed set before claiming your EXP.');
-    return;
-  }
+  // If user didn't check any specific set bubbles, count the session as completed
+  const effectiveSets = completedSets > 0 ? completedSets : (totalSets > 0 ? totalSets : 4);
+  const activeChar = getActiveCharacterId();
+  const currentTrack = appState.latestWorkoutData?.daily_track || 'track_a';
+  const userId = await getActiveUserId();
 
   const payload = {
-            character_id: completionContext?.character_id || getActiveCharacterId(),
-            sets_completed: completedSets,
-            sets: completionContext?.sets || [] // ⚡ THIS IS STEP 2: Bridges the data straight to app.py!
-        }; 
+    character: activeChar,
+    character_id: activeChar,
+    track: currentTrack,
+    daily_track: currentTrack,
+    user_id: userId,
+    exp_earned: 250,
+    sets_completed: effectiveSets,
+    sets: completionContext?.sets || [],
+    paradigm: appState.selectedDirection || 'train-like'
+  }; 
 
   try {
     const response = await fetch(API_WORKOUT_COMPLETE_ENDPOINT, {
@@ -2234,52 +2336,74 @@ async function submitWorkoutCompletion(event) {
       },
       body: JSON.stringify(payload),
     });
-    const result = await response.json();
+    const result = await response.json().catch(() => ({}));
 
-    if (!response.ok || result?.status !== 'success') {
-      console.error('[SHONENFIT] Workout completion sync failed:', result);
-      if (response.status === 400) {
-        showDailyTrainingCapWarning(result?.message);
-        return;
-      }
-
-      alert(`Workout completion failed: ${result?.message || `HTTP ${response.status}`}`);
-      return;
+    // 1. Capture the new EXP and completed workouts count from the backend
+    if (result.total_exp !== undefined) {
+      appState.userMetrics.totalExp = Number(result.total_exp);
+    } else {
+      appState.userMetrics.totalExp = (appState.userMetrics.totalExp || 0) + (result.exp || 250);
     }
 
-    // 1. Capture the new EXP from the backend and sync it into our global state
-        if (result.total_exp !== undefined) {
-            appState.userMetrics.totalExp = Number(result.total_exp);
-        }
+    if (result.completed_sessions !== undefined || result.completed_workouts_count !== undefined) {
+      appState.completedWorkoutsCount = Number(result.completed_sessions ?? result.completed_workouts_count);
+    } else {
+      appState.completedWorkoutsCount = (appState.completedWorkoutsCount || 0) + 1;
+    }
+    if (appState.userMetrics) {
+      appState.userMetrics.completedWorkoutsCount = appState.completedWorkoutsCount;
+    }
 
-        // 2. Feed the total EXP to our math module to get the current rank specs
-        const progression = calculateGradeProgress(appState.userMetrics.totalExp);
-        
-        // 3. Fallback check for grades to handle the existing ascension overlays
-        const newGrade = progression.grade || result.current_grade || previousGrade;
+    // 2. If the backend sent the next sequential workout_data, update local state
+    if (result.workout_data) {
+      const nextWorkout = normalizeWorkoutData(result.workout_data);
+      if (nextWorkout) {
+        appState.latestWorkoutData = nextWorkout;
+        persistActiveProfile(userSessionProfile, nextWorkout);
+      }
+    } else if (result.new_track && appState.latestWorkoutData) {
+      appState.latestWorkoutData.daily_track = result.new_track;
+      appState.latestWorkoutData.track_index = getTrackIndexFromKey(result.new_track);
+      appState.latestWorkoutData.track_name = `Track ${String.fromCharCode(65 + appState.latestWorkoutData.track_index)}`;
+    }
 
-        if (newGrade !== previousGrade && launchAscensionOverlay(newGrade, completedSets, result)) {
-            previousGrade = newGrade;
-            return;
-        }
+    // 3. Feed the total EXP to our math module to get the current rank specs
+    const progression = calculateGradeProgress(appState.userMetrics.totalExp);
+    const newGrade = progression.grade || result.current_grade || previousGrade;
+    const isRankUp = (newGrade !== previousGrade);
 
-        // 4. Fire existing updates
-        updateDashboardExpBoost(completedSets, result);
-        renderDashboardStreak(result);
-        await fetchWorkoutHistory();
+    // 4. Background UI state updates
+    updateDashboardExpBoost(effectiveSets, result);
+    renderDashboardStreak(result);
+    fetchWorkoutHistory();
 
-        
-        // Refresh the rank visual elements and update current tier progress badges
-        applyRankBadgeState(progression.grade); 
+    if (appState.latestWorkoutData) {
+      renderDashboardSummary(appState.latestWorkoutData);
+      updateWorkoutPath();
+      populateWorkoutExercises();
+    }
+    applyRankBadgeState(progression.grade);
 
-        // 5. Success cleanup and routing
-        alert(`Training Complete! Checked off ${completedSets}/${totalSets} sets. Gained ${result.exp_gained || 250} EXP! Current Tier: ${progression.grade}`);
-        previousGrade = newGrade;
-        resetRestTimer();
-        navigateView('dashboard-view'); 
+    // 5. Trigger the Level-Up / EXP Modal (sound & particle animation, NO alert!)
+    launchAscensionOverlay(newGrade, effectiveSets, result, isRankUp);
+    previousGrade = newGrade;
+    resetRestTimer();
+
   } catch (error) {
-    console.error('[SHONENFIT] Workout completion network error:', error);
-    alert('Could not sync workout completion with the local backend. Make sure app.py is running on http://127.0.0.1:5000.');
+    console.warn('[SHONENFIT] Offline fallback workout completion applied:', error);
+    appState.completedWorkoutsCount = (appState.completedWorkoutsCount || 0) + 1;
+    appState.userMetrics.totalExp = (appState.userMetrics.totalExp || 0) + 250;
+    if (appState.userMetrics) {
+      appState.userMetrics.completedWorkoutsCount = appState.completedWorkoutsCount;
+    }
+    const progression = calculateGradeProgress(appState.userMetrics.totalExp);
+    const newGrade = progression.grade || previousGrade;
+    const isRankUp = (newGrade !== previousGrade);
+
+    applyRankBadgeState(progression.grade);
+    launchAscensionOverlay(newGrade, effectiveSets, { exp: 250, current_grade: newGrade, total_exp: appState.userMetrics.totalExp }, isRankUp);
+    previousGrade = newGrade;
+    resetRestTimer();
   }
 }
 

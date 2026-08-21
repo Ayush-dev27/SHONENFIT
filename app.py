@@ -343,7 +343,50 @@ def create_profile():
         user_id = session.get('user_id')
         if not user_id:
             return jsonify({"status": "error", "message": "Unauthorized"}), 401
-        return jsonify({"status": "success", "user_id": user_id})
+
+        ensure_database_tables()
+        conn = sqlite3.connect(DATABASE_FILE)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        user_account = cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+        user_profile = cursor.execute(
+            'SELECT * FROM user_profiles WHERE username = ? ORDER BY id DESC LIMIT 1',
+            (user_account['username'],)
+        ).fetchone() if user_account else None
+
+        completed_workouts_count = cursor.execute(
+            'SELECT COUNT(*) FROM workout_history WHERE user_id = ?',
+            (user_id,)
+        ).fetchone()[0] if user_account else 0
+        conn.close()
+
+        if user_account and user_profile:
+            profile_data = {
+                'selectedUniverse': user_profile['selected_universe'],
+                'selectedCharacter': user_profile['selected_character'],
+                'strategyGoal': user_profile['training_strategy'],
+                'age': user_profile['age'],
+                'height': user_profile['height_cm'],
+                'weight': user_profile['weight_kg'],
+                'medicalHistory': user_profile['medical_history'],
+                'specialPreferences': user_profile['special_preferences'],
+                'user_id': user_id,
+                'completed_workouts_count': completed_workouts_count,
+            }
+            routine_payload = generate_custom_routine(profile_data, completed_workouts_count=completed_workouts_count)
+            return jsonify({
+                "status": "success",
+                "user_id": user_id,
+                "profile": dict(user_profile),
+                "workout_data": routine_payload,
+                "current_streak": calculate_streak(user_id),
+                "completed_workouts_count": completed_workouts_count,
+                "current_grade": user_account['current_grade'],
+                "total_exp": user_account['total_exp']
+            }), 200
+
+        return jsonify({"status": "success", "user_id": user_id, "completed_workouts_count": completed_workouts_count}), 200
 
     try:
         data = request.get_json(silent=True) or {}
@@ -385,19 +428,27 @@ def create_profile():
             password_hash=data.get('password_hash') or data.get('passwordHash')
         )
 
+        completed_workouts_count = cursor.execute(
+            'SELECT COUNT(*) FROM workout_history WHERE user_id = ?',
+            (user_account_id,)
+        ).fetchone()[0]
+
         session['user_id'] = user_account_id
         session['username'] = username
 
         conn.commit()
         conn.close()
 
-        routine_payload = generate_custom_routine(data)
+        data['user_id'] = user_account_id
+        data['completed_workouts_count'] = completed_workouts_count
+        routine_payload = generate_custom_routine(data, completed_workouts_count=completed_workouts_count)
 
         return jsonify({
             "status": "success",
             "message": "Profile synced to database and custom pipeline initialized!",
             "initial_grade": "Grade 4",
             "current_streak": calculate_streak(user_account_id),
+            "completed_workouts_count": completed_workouts_count,
             "workout_data": routine_payload
         }), 201
 
@@ -490,20 +541,18 @@ def log_workout():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
     
+@app.route('/api/complete-workout', methods=['POST'])
 @app.route('/api/workout-complete', methods=['POST'])
 def complete_workout():
     try:
-        data = request.get_json() or {}
-        character_id = data.get('character_id')
-        sets_completed = data.get('sets_completed')
+        data = request.get_json(silent=True) or {}
+        character_id = data.get('character') or data.get('character_id') or data.get('selected_character') or 'toji'
+        track_param = data.get('track') or data.get('daily_track') or 'track_a'
+        user_id_param = data.get('user_id') or data.get('userId') or session.get('user_id')
+        exp_earned = int(data.get('exp_earned') or data.get('exp') or data.get('exp_gained') or 250)
+        sets_completed = int(data.get('sets_completed') or (len(data.get('sets', [])) if isinstance(data.get('sets'), list) and data.get('sets') else 4))
+        paradigm = data.get('paradigm') or data.get('strategy') or data.get('strategyGoal') or 'train-like'
 
-        if character_id is None or sets_completed is None:
-            return jsonify({
-                "status": "error",
-                "message": "character_id and sets_completed are required."
-            }), 400
-
-        sets_completed = int(sets_completed)
         ensure_database_tables()
 
         conn = sqlite3.connect(DATABASE_FILE)
@@ -511,53 +560,64 @@ def complete_workout():
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        user = cursor.execute(
-            'SELECT * FROM user_profiles ORDER BY id DESC LIMIT 1'
-        ).fetchone()
+        # Resolve user account and profile
+        user = None
+        user_account = None
+
+        if user_id_param:
+            # Try integer id lookup
+            try:
+                user_account = cursor.execute('SELECT * FROM users WHERE id = ?', (int(user_id_param),)).fetchone()
+            except (ValueError, TypeError):
+                user_account = None
+
+            # Try username lookup
+            if not user_account:
+                user_account = cursor.execute('SELECT * FROM users WHERE username = ?', (str(user_id_param),)).fetchone()
+
+            if user_account:
+                user = cursor.execute('SELECT * FROM user_profiles WHERE username = ? ORDER BY id DESC LIMIT 1', (user_account['username'],)).fetchone()
 
         if not user:
-            conn.close()
-            return jsonify({
-                "status": "error",
-                "message": "User profile not found. Complete initialization first!"
-            }), 404
+            user = cursor.execute('SELECT * FROM user_profiles ORDER BY id DESC LIMIT 1').fetchone()
+
+        if not user:
+            # Create a default guest recruit profile if none exists
+            username = str(user_id_param) if user_id_param else 'Recruit'
+            cursor.execute('''
+                INSERT INTO user_profiles (
+                    username, selected_universe, selected_character, training_strategy,
+                    age, height_cm, weight_kg, medical_history, special_preferences, total_exp, current_grade
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                username, 'jjk', character_id, paradigm,
+                25, 175.0, 70.0, 'None', 'None', 0, 'Grade 4'
+            ))
+            user = cursor.execute('SELECT * FROM user_profiles WHERE id = ?', (cursor.lastrowid,)).fetchone()
+
+        username = user['username'] if user else 'Recruit'
+        age = user['age'] if user else 25
+        weight = user['weight_kg'] if user else 70.0
+        height = user['height_cm'] if user else 175.0
+        current_grade = user['current_grade'] if user else 'Grade 4'
+        current_total_exp = int(user['total_exp'] or 0)
 
         user_account_id = upsert_user_account(
             cursor,
-            username=user['username'],
-            age=user['age'],
-            weight=user['weight_kg'],
-            height=user['height_cm'],
-            current_grade=user['current_grade'],
-            total_exp=user['total_exp']
+            username=username,
+            age=age,
+            weight=weight,
+            height=height,
+            current_grade=current_grade,
+            total_exp=current_total_exp
         )
 
-        workout_logged_today = cursor.execute('''
-            SELECT id
-            FROM workout_history
-            WHERE user_id = ?
-              AND date(timestamp) = date('now', 'localtime')
-            LIMIT 1
-        ''', (user_account_id,)).fetchone()
-
-        if workout_logged_today:
-            conn.close()
-            return jsonify({
-                "status": "error",
-                "message": "Daily training cap reached! Rest and recovery are mandatory parts of a Shonen training arc."
-            }), 400
-
-        new_exp = 250
-        current_total_exp = int(user['total_exp'] or 0)
-        total_exp = current_total_exp + new_exp
-
+        total_exp = current_total_exp + exp_earned
         grade_number = max(1, 4 - (total_exp // 1000))
         current_grade = f"Grade {grade_number}"
         xp_to_next_level = 1000 - (total_exp % 1000)
         if xp_to_next_level == 1000:
             xp_to_next_level = 0 if grade_number == 1 else 1000
-
-        paradigm = data.get('paradigm') or user['training_strategy'] or 'train-like'
 
         cursor.execute('''
             UPDATE user_profiles
@@ -590,8 +650,28 @@ def complete_workout():
             character_id,
             paradigm,
             sets_completed,
-            new_exp
+            exp_earned
         ))
+
+        completed_workouts_count = cursor.execute(
+            'SELECT COUNT(*) FROM workout_history WHERE user_id = ?',
+            (user_account_id,)
+        ).fetchone()[0]
+
+        profile_data = {
+            'selectedUniverse': user['selected_universe'],
+            'selectedCharacter': character_id or user['selected_character'],
+            'strategyGoal': paradigm or user['training_strategy'],
+            'age': user['age'],
+            'height': user['height_cm'],
+            'weight': user['weight_kg'],
+            'medicalHistory': user['medical_history'],
+            'specialPreferences': user['special_preferences'],
+            'user_id': user_account_id,
+            'completed_workouts_count': completed_workouts_count,
+        }
+        next_workout_data = generate_custom_routine(profile_data, completed_workouts_count=completed_workouts_count)
+        new_track = next_workout_data.get('daily_track', 'track_a')
 
         conn.commit()
         conn.close()
@@ -599,16 +679,25 @@ def complete_workout():
         current_streak = calculate_streak(user_account_id)
 
         return jsonify({
+            "success": True,
             "status": "success",
-            "new_exp": new_exp,
+            "new_track": new_track,
+            "track": new_track,
+            "exp": exp_earned,
+            "exp_earned": exp_earned,
+            "exp_gained": exp_earned,
+            "new_exp": exp_earned,
             "total_exp": total_exp,
             "current_grade": current_grade,
             "xp_to_next_level": xp_to_next_level,
-            "current_streak": current_streak
+            "current_streak": current_streak,
+            "completed_sessions": completed_workouts_count,
+            "completed_workouts_count": completed_workouts_count,
+            "workout_data": next_workout_data
         }), 200
 
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
+        return jsonify({"success": False, "status": "error", "message": str(e)}), 400
 
 
 @app.route('/api/workout-history', methods=['GET'])

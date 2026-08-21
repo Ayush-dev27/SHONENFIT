@@ -12,14 +12,18 @@ TRACK_FOCUS = {
     "recovery": "Full Recovery System Rest Arc"
 }
 
-TRACK_BY_WEEKDAY = {
+PROGRESSION_TRACKS = {
     0: "track_a",
     1: "track_b",
     2: "track_c",
     3: "track_d",
-    4: "track_d",
-    5: "track_e",
-    6: "recovery",
+}
+
+TRACK_NAMES = {
+    "track_a": "Track A",
+    "track_b": "Track B",
+    "track_c": "Track C",
+    "track_d": "Track D",
 }
 
 
@@ -1102,10 +1106,11 @@ def build_routine_items(exercises, strategy, age, weight, height, medical_condit
     return calculated_routines
 
 
-def generate_custom_routine(profile_data):
+def generate_custom_routine(profile_data, completed_workouts_count=None):
     """
     Takes a user profile data dictionary and calculates a personalized,
-    biologically scaled, safety-filtered Shonen training program.
+    biologically scaled, safety-filtered Shonen training program based on
+    progression count (track_index = completed_workouts_count % 4).
     """
     char_key = resolve_character_key(profile_data)
     raw_strategy = str(profile_data.get("strategyGoal", "physique")).lower().replace("_", "-")
@@ -1128,15 +1133,29 @@ def generate_custom_routine(profile_data):
         or ""
     )
 
-    current_day = datetime.now().weekday()
-    track_key = TRACK_BY_WEEKDAY.get(current_day, "recovery")
+    if completed_workouts_count is None:
+        raw_count = (
+            profile_data.get("completed_workouts_count")
+            if profile_data.get("completed_workouts_count") is not None
+            else (
+                profile_data.get("completed_workouts")
+                if profile_data.get("completed_workouts") is not None
+                else profile_data.get("completedWorkoutsCount")
+            )
+        )
+        completed_workouts_count = parse_int(raw_count, 0)
+
+    track_index = max(0, int(completed_workouts_count)) % 4
+    track_key = PROGRESSION_TRACKS.get(track_index, "track_a")
+    track_name = TRACK_NAMES.get(track_key, f"Track {chr(65 + track_index)}")
+
     char_template = CHARACTER_TEMPLATES.get(char_key, CHARACTER_TEMPLATES.get("toji", {}))
     if strategy not in char_template:
         strategy = "physique" if "physique" in char_template else list(char_template.keys())[0]
     
     selected_template = char_template[strategy] 
     # Dynamic Focus Directive Extraction (Auto-extracts header before ':')
-    raw_exercises = selected_template.get(track_key, [])
+    raw_exercises = selected_template.get(track_key, selected_template.get("track_a", []))
     first_exercise_str = raw_exercises[0] if raw_exercises else ""
     if ":" in first_exercise_str:
         focus_directive = first_exercise_str.split(":")[0].strip()
@@ -1176,7 +1195,6 @@ def generate_custom_routine(profile_data):
                 # Inject recovery coaching modifiers to the cues
                 ex["coaching_cue"] += " [FATIGUE DELOAD ACTIVE: Focus strictly on form over load]"
 
-    # focus_directive = TRACK_FOCUS[track_key] 
     if age > 40:
         focus_directive += " | Recovery Tip: reduced compound volume for structural recovery."
 
@@ -1185,7 +1203,10 @@ def generate_custom_routine(profile_data):
         "strategy_paradigm": strategy.upper(),
         "core_focus_directive": focus_directive,
         "daily_track": track_key,
-        "weekday_index": current_day,
+        "track_index": track_index,
+        "track_letter": chr(65 + track_index),
+        "track_name": track_name,
+        "completed_workouts_count": completed_workouts_count,
         "assigned_workout_routine": final_filtered_routines,
     } 
 
