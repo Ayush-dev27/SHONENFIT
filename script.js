@@ -38,14 +38,19 @@ function isSupabaseConfigured() {
 // STATE MANAGEMENT
 // ============================================================================
 
-const API_PROFILE_ENDPOINT = 'http://127.0.0.1:5000/api/profile';
-const API_SIGNUP_ENDPOINT = 'http://127.0.0.1:5000/api/signup';
-const API_LOGIN_ENDPOINT = 'http://127.0.0.1:5000/api/login';
-const API_LOGOUT_ENDPOINT = 'http://127.0.0.1:5000/api/logout';
-const API_WORKOUT_COMPLETE_ENDPOINT = 'http://127.0.0.1:5000/api/complete-workout';
-const API_WORKOUT_COMPLETE_LEGACY_ENDPOINT = 'http://127.0.0.1:5000/api/workout-complete';
-const API_WORKOUT_HISTORY_ENDPOINT = 'http://127.0.0.1:5000/api/workout-history';
+const API_BASE = (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin.startsWith('http'))
+  ? window.location.origin
+  : 'http://127.0.0.1:5000';
+
+const API_PROFILE_ENDPOINT = `${API_BASE}/api/profile`;
+const API_SIGNUP_ENDPOINT = `${API_BASE}/api/signup`;
+const API_LOGIN_ENDPOINT = `${API_BASE}/api/login`;
+const API_LOGOUT_ENDPOINT = `${API_BASE}/api/logout`;
+const API_WORKOUT_COMPLETE_ENDPOINT = `${API_BASE}/api/complete-workout`;
+const API_WORKOUT_COMPLETE_LEGACY_ENDPOINT = `${API_BASE}/api/workout-complete`;
+const API_WORKOUT_HISTORY_ENDPOINT = `${API_BASE}/api/workout-history`;
 const ACTIVE_PROFILE_STORAGE_KEY = 'shonenfit.activeProfile';
+const AUTH_FLAG_STORAGE_KEY = 'shonenfit.isAuthenticated';
 
 const DEFAULT_PROFILE_VALUES = {
   age: '25',
@@ -117,7 +122,6 @@ window.userSessionProfile = userSessionProfile;
 
 let audioContext = null;
 let previousGrade = 'Grade 4';
-let pendingAscensionState = null;
 
 const characterDatabase = {
   jjk: [
@@ -157,6 +161,21 @@ document.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
 
+    // Guard against submission while request is already in-flight
+    if (appState.isCompletingWorkout) {
+        return;
+    }
+
+    // Check that user has completed at least one set if sets are rendered
+    const completionContext = captureWorkoutCompletionContext();
+    const completedSets = Number(completionContext?.sets_completed || 0);
+    const totalSets = Number(completionContext?.total_sets || 0);
+
+    if (totalSets > 0 && completedSets === 0) {
+        showDailyTrainingCapWarning('Incomplete training arc! Tap your completed sets to log them before claiming EXP.');
+        return;
+    }
+
     // Directly call the real function that removes the hidden class
     if (typeof showHonestyGate === 'function') {
         showHonestyGate();
@@ -178,25 +197,96 @@ document.addEventListener('DOMContentLoaded', () => {
   wireWorkoutRouteButton();
   wireWorkoutControlButtons();
   wireHonestyGateControls();
-  wireAscensionOverlayControls();
   ensureWorkoutRuntimeStyles();
   bindSetTrackingSelectors();
   fetchWorkoutHistory();
+  wireRouteListeners();
   checkAuthSessionOnLoad();
 });
 
 // ============================================================================
-// VIEW NAVIGATION
+// VIEW NAVIGATION & ROUTE GUARD
 // ============================================================================
 
+function normalizeRouteId(route) {
+  if (!route) return '';
+  const clean = String(route).toLowerCase().replace(/^[#/]+|[#/]+$/g, '').trim();
+  if (!clean || clean === 'home' || clean === 'index' || clean === 'index.html') return 'home';
+  if (clean === 'login' || clean === 'auth' || clean === 'auth-view' || clean === 'signup') return 'auth-view';
+  if (clean === 'universe' || clean === 'universes' || clean === 'universe-view') return 'universe-view';
+  if (clean === 'character' || clean === 'characters' || clean === 'character-view') return 'character-view';
+  if (clean === 'path' || clean === 'path-gate' || clean === 'vitals') return 'path-gate';
+  if (clean === 'dashboard' || clean === 'dashboard-view') return 'dashboard-view';
+  if (clean === 'workout' || clean === 'workout-view') return 'workout-view';
+  return clean;
+}
+
+function syncBrowserUrl(viewId) {
+  try {
+    const urlMap = {
+      'auth-view': '/login',
+      'universe-view': '/universe',
+      'character-view': '/character',
+      'path-gate': '/path',
+      'dashboard-view': '/dashboard',
+      'workout-view': '/workout',
+    };
+    const targetPath = urlMap[viewId];
+    if (targetPath && window.history && window.history.replaceState) {
+      if (window.location.pathname !== targetPath) {
+        window.history.replaceState({ view: viewId }, '', targetPath);
+      }
+    }
+  } catch (e) {
+    // Ignore history errors
+  }
+}
+
+function wireRouteListeners() {
+  const handleRoute = () => {
+    const route = window.location.hash || window.location.pathname;
+    const normalized = normalizeRouteId(route);
+    if (normalized) {
+      navigateView(normalized);
+    }
+  };
+
+  window.addEventListener('hashchange', handleRoute);
+  window.addEventListener('popstate', handleRoute);
+}
+
 function navigateView(viewId) {
-  if (viewId === 'auth-view') {
+  let targetViewId = normalizeRouteId(viewId);
+
+  // If target is root, empty, or legacy home:
+  if (!targetViewId || targetViewId === 'home') {
+    targetViewId = appState.isAuthenticated ? 'universe-view' : 'auth-view';
+  }
+
+  // Authentication guard:
+  // If unauthenticated user attempts to access any protected view:
+  if (targetViewId !== 'auth-view' && !appState.isAuthenticated) {
     showAuthPortal();
+    syncBrowserUrl('auth-view');
     return;
   }
 
+  // If authenticated user attempts to access login:
+  if (targetViewId === 'auth-view' && appState.isAuthenticated) {
+    targetViewId = 'universe-view';
+  }
+
+  // If unauthenticated user accessing auth-view:
+  if (targetViewId === 'auth-view') {
+    showAuthPortal();
+    syncBrowserUrl('auth-view');
+    return;
+  }
+
+  // User is authenticated and navigating to a valid protected view
+  hideAuthPortal();
+
   const onboardingStepIds = ['home', 'universe-view', 'character-view', 'path-gate'];
-  const targetViewId = viewId;
   const topLevelViewId = onboardingStepIds.includes(targetViewId) ? 'onboarding-view' : targetViewId;
 
   document.querySelectorAll('.flow-view').forEach((view) => {
@@ -228,6 +318,8 @@ function navigateView(viewId) {
 
     window.scrollTo(0, 0);
   }
+
+  syncBrowserUrl(targetViewId);
 }
 
 function MapsToView(viewId) {
@@ -239,6 +331,10 @@ function MapsToView(viewId) {
 // ============================================================================
 
 function selectUniverse(universeName) {
+  if (!appState.isAuthenticated) {
+    showAuthPortal();
+    return;
+  }
   const universeKey = normalizeUniverseKey(universeName);
   appState.selectedUniverse = universeKey;
   populateCharacterPool(universeKey);
@@ -368,6 +464,8 @@ async function checkAuthSessionOnLoad() {
             handleAuthSuccess({ status: 'success', profile: profilePayload, user }, profilePayload, 'supabase-oauth');
           } else if (event === 'SIGNED_OUT') {
             appState.isAuthenticated = false;
+            localStorage.removeItem(AUTH_FLAG_STORAGE_KEY);
+            showAuthPortal();
           }
         });
       } catch (err) {
@@ -386,19 +484,27 @@ async function checkAuthSessionOnLoad() {
     });
 
     if (response.status === 401) {
+      appState.isAuthenticated = false;
+      localStorage.removeItem(AUTH_FLAG_STORAGE_KEY);
       showAuthPortal();
       return;
     }
 
     if (!response.ok) {
       console.info(`[SHONENFIT] Session probe skipped: HTTP ${response.status}`);
+      if (!appState.isAuthenticated) {
+        showAuthPortal();
+      }
       return;
     }
 
     const result = await response.json();
-    handleAuthSuccess(result);
+    handleAuthSuccess(result, {}, 'session-probe');
   } catch (error) {
     console.info('[SHONENFIT] Auth session probe unavailable; continuing local SPA mode.', error);
+    if (!appState.isAuthenticated) {
+      showAuthPortal();
+    }
   }
 }
 
@@ -571,8 +677,11 @@ async function submitLoginAuth() {
         handleAuthSuccess({ status: 'success', profile, user }, profile, 'login');
         return;
       } catch (error) {
-        console.error('[SHONENFIT] Supabase login error:', error);
-        showAuthError(error.message || 'Invalid callsign/email or secret seal.');
+        console.warn('[SHONENFIT] Supabase login attempt notice, falling back to local auth:', error.message || error);
+        const localSuccess = await submitLocalServerAuth('login', { username: emailOrUsername, password });
+        if (!localSuccess) {
+          showAuthError(error.message || 'Invalid callsign/email or secret seal.');
+        }
         return;
       } finally {
         setFormLoadingState('login', false);
@@ -656,8 +765,11 @@ async function submitSignupAuth() {
         }
         return;
       } catch (error) {
-        console.error('[SHONENFIT] Supabase signup error:', error);
-        showAuthError(error.message || 'Could not initialize corps profile.');
+        console.warn('[SHONENFIT] Supabase signup attempt notice, falling back to local auth:', error.message || error);
+        const localSuccess = await submitLocalServerAuth('signup', { username: emailOrUsername, password, age, weight, height });
+        if (!localSuccess) {
+          showAuthError(error.message || 'Could not initialize corps profile.');
+        }
         return;
       } finally {
         setFormLoadingState('signup', false);
@@ -685,13 +797,15 @@ async function submitLocalServerAuth(mode, payload) {
 
     if (!response.ok || result?.status === 'error') {
       showAuthError(result?.message || `Authentication failed with HTTP ${response.status}.`);
-      return;
+      return false;
     }
 
     handleAuthSuccess(result, payload, mode);
+    return true;
   } catch (error) {
     console.error('[SHONENFIT] Local auth failed:', error);
     showAuthError('Could not reach the auth server. Configure live Supabase keys in script.js or ensure the Flask backend is running on http://127.0.0.1:5000.');
+    return false;
   } finally {
     setFormLoadingState(mode, false);
   }
@@ -699,8 +813,8 @@ async function submitLocalServerAuth(mode, payload) {
 
 function handleAuthSuccess(result = {}, submittedPayload = {}, mode = 'login') {
   appState.isAuthenticated = true;
+  localStorage.setItem(AUTH_FLAG_STORAGE_KEY, 'true');
   hideAuthPortal();
-  showMainLandingPage();
   hidePathGate();
 
   const storedProfile = getStoredActiveProfile();
@@ -723,40 +837,50 @@ function handleAuthSuccess(result = {}, submittedPayload = {}, mode = 'login') {
   }
 
   if (submittedPayload.age || profileData.age || profileData.total_exp !== undefined || profileData.totalExp !== undefined) {
-        appState.userMetrics = {
-            age: submittedPayload.age || profileData.age || null,
-            height: submittedPayload.height || profileData.height || null,
-            weight: submittedPayload.weight || profileData.weight || null,
-            medicalHistory: profileData.medical_history || null,
-            preferences: profileData.special_preferences || null,
-            totalExp: Number(profileData.total_exp ?? profileData.totalExp ?? profileData.new_exp ?? 0),
-            completedWorkoutsCount: appState.completedWorkoutsCount,
-        };
-    } 
-
-  if (!hasSavedPathSelection) {
-    navigateView('universe-view');
-    return;
+    appState.userMetrics = {
+      age: submittedPayload.age || profileData.age || null,
+      height: submittedPayload.height || profileData.height || null,
+      weight: submittedPayload.weight || profileData.weight || null,
+      medicalHistory: profileData.medical_history || null,
+      preferences: profileData.special_preferences || null,
+      totalExp: Number(profileData.total_exp ?? profileData.totalExp ?? profileData.new_exp ?? 0),
+      completedWorkoutsCount: appState.completedWorkoutsCount,
+    };
   }
 
-  if (!workoutData) {
-    navigateView('universe-view');
-    return;
+  if (workoutData) {
+    appState.latestWorkoutData = workoutData;
+    persistActiveProfile(profileData, workoutData);
+    renderDashboardSummary(workoutData);
+
+    const currentTotalExp = appState.userMetrics.totalExp || 0;
+    const initialProgress = calculateGradeProgress(currentTotalExp);
+
+    previousGrade = initialProgress.grade;
+    applyRankBadgeState(initialProgress.grade); 
+    renderDashboardStreak(result.current_streak !== undefined ? result : profileData);
+    fetchWorkoutHistory();
   }
 
-  appState.latestWorkoutData = workoutData;
-  persistActiveProfile(profileData, workoutData);
-  renderDashboardSummary(workoutData);
+  // If already-authenticated user loaded a deep protected route
+  const currentRoute = normalizeRouteId(window.location.hash || window.location.pathname);
+  if (mode === 'session-probe' && currentRoute && currentRoute !== 'home' && currentRoute !== 'auth-view' && currentRoute !== 'universe-view') {
+    if (currentRoute === 'dashboard-view' && workoutData) {
+      navigateView('dashboard-view');
+      return;
+    }
+    if (currentRoute === 'workout-view' && workoutData) {
+      accessWorkout();
+      return;
+    }
+    if (currentRoute === 'character-view' && appState.selectedUniverse) {
+      navigateView('character-view');
+      return;
+    }
+  }
 
-  // Calculate full Shonen metrics using the loaded database EXP values
-        const currentTotalExp = appState.userMetrics.totalExp || 0;
-        const initialProgress = calculateGradeProgress(currentTotalExp);
-
-        previousGrade = initialProgress.grade;
-        applyRankBadgeState(initialProgress.grade); 
-  renderDashboardStreak(result.current_streak !== undefined ? result : profileData);
-  fetchWorkoutHistory();
-  navigateView('dashboard-view');
+  // All successful logins and visits to root "/" navigate directly to Choose Universe
+  navigateView('universe-view');
 }
 
 function hasActivePathSelection(profileData = {}) {
@@ -826,7 +950,7 @@ function showMainLandingPage() {
 
   document.getElementById('auth-portal-overlay')?.classList.add('hidden');
   setMainAppVisibility(true);
-  navigateView('home');
+  navigateView('universe-view');
 }
 
 function showAuthPortal() {
@@ -862,13 +986,6 @@ function setMainAppVisibility(isVisible) {
     view.style.display = isVisible ? '' : 'none';
     view.setAttribute('aria-hidden', String(!isVisible));
   });
-
-  if (isVisible) {
-    const hasActiveView = document.querySelector('.flow-view.active-view, .flow-view.active');
-    if (!hasActiveView) {
-      navigateView('universe-view');
-    }
-  }
 }
 
 function wireLogoutButton() {
@@ -878,6 +995,7 @@ function wireLogoutButton() {
 
 async function logoutAndResetSession() {
   localStorage.removeItem(ACTIVE_PROFILE_STORAGE_KEY);
+  localStorage.removeItem(AUTH_FLAG_STORAGE_KEY);
   appState.selectedUniverse = null;
   appState.selectedCharacter = null;
   appState.selectedDirection = null;
@@ -893,7 +1011,6 @@ async function logoutAndResetSession() {
     totalExp: 0,
   };
   previousGrade = 'Grade 4';
-  pendingAscensionState = null;
   hidePathGate();
   clearAuthError();
 
@@ -1529,6 +1646,11 @@ function wireWorkoutRouteButton() {
 }
 
 function accessWorkout() {
+  if (!appState.isAuthenticated) {
+    showAuthPortal();
+    return;
+  }
+
   if (!appState.latestWorkoutData) {
     const storedProfile = getStoredActiveProfile();
     const storedWorkoutData = normalizeWorkoutData(storedProfile?.workoutData);
@@ -1970,31 +2092,6 @@ function playTimerCompleteCue() {
   oscillator.stop(now + 0.45);
 }
 
-function playAscensionChime() {
-  unlockTimerAudioContext().then(() => {
-    const audioCtx = audioContext;
-    if (!audioCtx || audioCtx.state === 'suspended') {
-      return;
-    }
-
-    const oscillator = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
-    const now = audioCtx.currentTime;
-
-    oscillator.type = 'square';
-    oscillator.frequency.setValueAtTime(440, now);
-    oscillator.frequency.setValueAtTime(880, now + 0.15);
-    gainNode.gain.setValueAtTime(0.45, now);
-    gainNode.gain.setValueAtTime(0.45, now + 0.4);
-    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
-
-    oscillator.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-    oscillator.start(now);
-    oscillator.stop(now + 0.5);
-  });
-}
-
 function normalizeGradeClass(grade) {
   const normalized = String(grade || 'Grade 4').toLowerCase().trim();
   if (normalized.includes('special')) {
@@ -2028,92 +2125,6 @@ function applyRankBadgeState(grade) {
     }
 } 
 
-    // 3. Update the descriptive milestone metrics text below the badge
-    const statusNotice = rankBadge.nextElementSibling || document.querySelector('.status-notice');
-    if (statusNotice && appState.userMetrics.totalExp !== undefined) {
-        const metrics = calculateGradeProgress(appState.userMetrics.totalExp);
-        
-        if (metrics.grade === "Special Grade") {
-            statusNotice.textContent = `Maximum Rank achieved! Current EXP: ${appState.userMetrics.totalExp}`;
-        } else {
-            statusNotice.textContent = `${metrics.currentExpInTier} EXP in tier. ${metrics.expNeededForNextTier} EXP to next grade (${metrics.progressPercentage}% complete).`;
-        }
-    }
-
-
-function wireAscensionOverlayControls() {
-  const claimButton = document.getElementById('claim-new-power-btn');
-  const overlay = document.getElementById('ascension-celebrate-overlay');
-
-  if (!claimButton || !overlay) {
-    return;
-  }
-
-  claimButton.addEventListener('click', () => {
-    overlay.classList.add('hidden');
-
-    if (!pendingAscensionState) {
-      navigateView('dashboard-view');
-      return;
-    }
-
-    const { completedSets, result, newGrade } = pendingAscensionState;
-    previousGrade = newGrade || result.current_grade || previousGrade;
-    updateDashboardExpBoost(completedSets, result);
-    renderDashboardStreak(result);
-    fetchWorkoutHistory();
-    resetRestTimer();
-
-    if (appState.latestWorkoutData) {
-      renderDashboardSummary(appState.latestWorkoutData);
-      updateWorkoutPath();
-      populateWorkoutExercises();
-    }
-
-    navigateView('dashboard-view');
-    pendingAscensionState = null;
-  });
-}
-
-function launchAscensionOverlay(newGrade, completedSets, result = {}, isRankUp = true) {
-  const overlay = document.getElementById('ascension-celebrate-overlay');
-  const gradeEmblem = document.getElementById('ascension-grade-emblem');
-  const title = document.getElementById('ascension-title');
-  const kicker = document.querySelector('#ascension-celebrate-overlay .ascension-kicker');
-  const copy = document.querySelector('#ascension-celebrate-overlay .ascension-copy');
-  const claimButton = document.getElementById('claim-new-power-btn');
-
-  if (!overlay || !gradeEmblem) {
-    return false;
-  }
-
-  pendingAscensionState = { completedSets, result, newGrade };
-  applyRankBadgeState(newGrade);
-
-  const expGained = result.exp || result.exp_earned || result.exp_gained || result.new_exp || 250;
-  const nextTrackName = result.workout_data?.track_name
-    || (result.new_track ? `Track ${result.new_track.replace('track_', '').toUpperCase()}` : 'Next Training Arc');
-
-  if (isRankUp) {
-    if (kicker) kicker.textContent = 'Training Arc Breakthrough';
-    if (title) title.textContent = 'RANK ASCENDED';
-    gradeEmblem.className = `ascension-grade-emblem ${normalizeGradeClass(newGrade)}`;
-    gradeEmblem.textContent = newGrade.toUpperCase();
-    if (copy) copy.textContent = `You have ascended to ${newGrade}! +${expGained} EXP claimed. Next up: ${nextTrackName}.`;
-    if (claimButton) claimButton.textContent = 'CLAIM NEW POWER';
-  } else {
-    if (kicker) kicker.textContent = 'Training Arc Mastered';
-    if (title) title.textContent = 'POWER EXPANDED';
-    gradeEmblem.className = `ascension-grade-emblem ${normalizeGradeClass(newGrade)}`;
-    gradeEmblem.textContent = `+${expGained} EXP`;
-    if (copy) copy.textContent = `Completed training arc! Gained ${expGained} EXP towards ${newGrade}. Unlocked ${nextTrackName}!`;
-    if (claimButton) claimButton.textContent = 'RETURN TO DASHBOARD';
-  }
-
-  playAscensionChime();
-  overlay.classList.remove('hidden');
-  return true;
-} 
 
 // ============================================================================
 // MISSION COMPLETION
@@ -2303,14 +2314,23 @@ async function getActiveUserId() {
 async function submitWorkoutCompletion(event) { 
   event?.preventDefault();
   event?.stopPropagation();
+
+  if (appState.isCompletingWorkout) {
+    return;
+  }
+
   await unlockTimerAudioContext();
 
   const completionContext = captureWorkoutCompletionContext();
   const completedSets = Number(completionContext?.sets_completed || 0);
   const totalSets = Number(completionContext?.total_sets || 0);
 
-  // If user didn't check any specific set bubbles, count the session as completed
-  const effectiveSets = completedSets > 0 ? completedSets : (totalSets > 0 ? totalSets : 4);
+  if (totalSets > 0 && completedSets === 0) {
+    showDailyTrainingCapWarning('Incomplete training arc! Tap your completed sets to log them before claiming EXP.');
+    return;
+  }
+
+  const effectiveSets = completedSets > 0 ? completedSets : (totalSets > 0 ? totalSets : 1);
   const activeChar = getActiveCharacterId();
   const currentTrack = appState.latestWorkoutData?.daily_track || 'track_a';
   const userId = await getActiveUserId();
@@ -2327,6 +2347,12 @@ async function submitWorkoutCompletion(event) {
     paradigm: appState.selectedDirection || 'train-like'
   }; 
 
+  const completeButton = document.getElementById('complete-workout-btn');
+  if (completeButton) {
+    completeButton.disabled = true;
+  }
+  appState.isCompletingWorkout = true;
+
   try {
     const response = await fetch(API_WORKOUT_COMPLETE_ENDPOINT, {
       method: 'POST',
@@ -2338,7 +2364,14 @@ async function submitWorkoutCompletion(event) {
     });
     const result = await response.json().catch(() => ({}));
 
-    // 1. Capture the new EXP and completed workouts count from the backend
+    // Authoritative check: if locked or rejected by backend, award ZERO EXP and show recovery notice
+    if (result.status === 'locked' || result.success === false) {
+      showDailyTrainingCapWarning(result.message || 'Daily training cap reached! Recovery is mandatory.');
+      navigateView('dashboard-view');
+      return;
+    }
+
+    // 1. Capture the new EXP and completed workouts count from the authoritative backend
     if (result.total_exp !== undefined) {
       appState.userMetrics.totalExp = Number(result.total_exp);
     } else {
@@ -2370,7 +2403,7 @@ async function submitWorkoutCompletion(event) {
     // 3. Feed the total EXP to our math module to get the current rank specs
     const progression = calculateGradeProgress(appState.userMetrics.totalExp);
     const newGrade = progression.grade || result.current_grade || previousGrade;
-    const isRankUp = (newGrade !== previousGrade);
+    previousGrade = newGrade;
 
     // 4. Background UI state updates
     updateDashboardExpBoost(effectiveSets, result);
@@ -2383,27 +2416,19 @@ async function submitWorkoutCompletion(event) {
       populateWorkoutExercises();
     }
     applyRankBadgeState(progression.grade);
-
-    // 5. Trigger the Level-Up / EXP Modal (sound & particle animation, NO alert!)
-    launchAscensionOverlay(newGrade, effectiveSets, result, isRankUp);
-    previousGrade = newGrade;
     resetRestTimer();
+
+    // 5. Standard successful completion: cleanly route directly to the existing dashboard
+    navigateView('dashboard-view');
 
   } catch (error) {
-    console.warn('[SHONENFIT] Offline fallback workout completion applied:', error);
-    appState.completedWorkoutsCount = (appState.completedWorkoutsCount || 0) + 1;
-    appState.userMetrics.totalExp = (appState.userMetrics.totalExp || 0) + 250;
-    if (appState.userMetrics) {
-      appState.userMetrics.completedWorkoutsCount = appState.completedWorkoutsCount;
+    console.error('[SHONENFIT] Workout submission error:', error);
+    showDailyTrainingCapWarning('Unable to reach server. Please verify connection.');
+  } finally {
+    appState.isCompletingWorkout = false;
+    if (completeButton) {
+      completeButton.disabled = false;
     }
-    const progression = calculateGradeProgress(appState.userMetrics.totalExp);
-    const newGrade = progression.grade || previousGrade;
-    const isRankUp = (newGrade !== previousGrade);
-
-    applyRankBadgeState(progression.grade);
-    launchAscensionOverlay(newGrade, effectiveSets, { exp: 250, current_grade: newGrade, total_exp: appState.userMetrics.totalExp }, isRankUp);
-    previousGrade = newGrade;
-    resetRestTimer();
   }
 }
 

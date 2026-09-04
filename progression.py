@@ -18,20 +18,25 @@ def process_workout_log(current_exp, current_grade, last_logged_str, weekly_coun
     
     # 1. TIME-LOCK CHECK: Anti-Cheat Mechanism
     if last_logged_str:
-        last_logged_time = datetime.fromisoformat(last_logged_str)
-        time_elapsed = now - last_logged_time
-        
-        if time_elapsed < timedelta(hours=24):
-            time_remaining = timedelta(hours=24) - time_elapsed
-            hours, remainder = divmod(time_remaining.seconds, 3600)
-            minutes, _ = divmod(remainder, 60)
+        try:
+            last_logged_time = datetime.fromisoformat(str(last_logged_str).replace('Z', '+00:00'))
+            if last_logged_time.tzinfo is not None:
+                last_logged_time = last_logged_time.replace(tzinfo=None)
+            time_elapsed = now - last_logged_time
             
-            return {
-                "status": "locked",
-                "message": f"⚠️ Training cooldown active! Your muscles need rest. Try again in {hours}h {minutes}m.",
-                "total_exp": current_exp,
-                "current_grade": current_grade
-            }
+            if time_elapsed < timedelta(hours=24):
+                time_remaining = timedelta(hours=24) - time_elapsed
+                hours, remainder = divmod(time_remaining.seconds, 3600)
+                minutes, _ = divmod(remainder, 60)
+                
+                return {
+                    "status": "locked",
+                    "message": f"⚠️ Training cooldown active! Your muscles need rest. Try again in {hours}h {minutes}m.",
+                    "total_exp": current_exp,
+                    "current_grade": current_grade
+                }
+        except Exception:
+            pass
 
     # 2. DYNAMIC BASE EXP & STREAK SCALING BASED ON GRADE
     if current_grade == "Grade 4":

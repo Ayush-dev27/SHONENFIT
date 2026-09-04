@@ -2,7 +2,8 @@ from flask import Flask, request, jsonify, session, send_from_directory
 from flask_cors import CORS
 import sqlite3
 import hashlib
-from datetime import datetime
+import os
+from datetime import datetime, timezone
 from database import log_workout_session
 from progression import calculate_fatigue_status 
 # Import both core engines you built
@@ -140,8 +141,10 @@ def index():
 
 @app.route('/<path:path>')
 def serve_static(path):
-    # This automatically catches requests for style.css, script.js, or images
-    return send_from_directory('.', path) 
+    # This automatically catches requests for style.css, script.js, images, or falls back to SPA index.html
+    if os.path.exists(path) and os.path.isfile(path):
+        return send_from_directory('.', path)
+    return send_from_directory('.', 'index.html') 
 
 def upsert_user_account(cursor, username, age, weight, height, current_grade='Grade 4', total_exp=0, password_hash=None):
     safe_password_hash = password_hash or 'local-dev-auth-pending'
@@ -337,6 +340,12 @@ def login():
         return jsonify({"status": "error", "message": str(e)}), 400
 
 
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return jsonify({"status": "success", "message": "Logged out successfully."}), 200
+
+
 @app.route('/api/profile', methods=['GET', 'POST'])
 def create_profile():
     if request.method == 'GET':
@@ -386,7 +395,13 @@ def create_profile():
                 "total_exp": user_account['total_exp']
             }), 200
 
-        return jsonify({"status": "success", "user_id": user_id, "completed_workouts_count": completed_workouts_count}), 200
+        return jsonify({
+            "status": "success",
+            "user_id": user_id,
+            "username": user_account['username'] if user_account else 'Recruit',
+            "user": dict(user_account) if user_account else None,
+            "completed_workouts_count": completed_workouts_count
+        }), 200
 
     try:
         data = request.get_json(silent=True) or {}
@@ -550,7 +565,27 @@ def complete_workout():
         track_param = data.get('track') or data.get('daily_track') or 'track_a'
         user_id_param = data.get('user_id') or data.get('userId') or session.get('user_id')
         exp_earned = int(data.get('exp_earned') or data.get('exp') or data.get('exp_gained') or 250)
-        sets_completed = int(data.get('sets_completed') or (len(data.get('sets', [])) if isinstance(data.get('sets'), list) and data.get('sets') else 4))
+
+        # Enforce set completion requirements
+        raw_sets = data.get('sets_completed')
+        sets_list = data.get('sets')
+        if raw_sets is not None:
+            try:
+                sets_completed = int(raw_sets)
+            except (ValueError, TypeError):
+                sets_completed = 0
+        elif isinstance(sets_list, list) and len(sets_list) > 0:
+            sets_completed = len(sets_list)
+        else:
+            sets_completed = 0
+
+        if sets_completed <= 0:
+            return jsonify({
+                "success": False,
+                "status": "incomplete",
+                "message": "Workout incomplete. Complete all required sets before recording your training arc."
+            }), 400
+
         paradigm = data.get('paradigm') or data.get('strategy') or data.get('strategyGoal') or 'train-like'
 
         ensure_database_tables()
@@ -560,47 +595,54 @@ def complete_workout():
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        # Resolve user account and profile
+        # Resolve user account and profile with priority on active session
         user = None
         user_account = None
 
-        if user_id_param:
-            # Try integer id lookup
+        session_user_id = session.get('user_id')
+        session_username = session.get('username')
+
+        if session_user_id:
+            try:
+                user_account = cursor.execute('SELECT * FROM users WHERE id = ?', (int(session_user_id),)).fetchone()
+            except (ValueError, TypeError):
+                user_account = None
+
+        if not user_account and session_username:
+            user_account = cursor.execute('SELECT * FROM users WHERE username = ?', (str(session_username),)).fetchone()
+
+        if not user_account and user_id_param:
             try:
                 user_account = cursor.execute('SELECT * FROM users WHERE id = ?', (int(user_id_param),)).fetchone()
             except (ValueError, TypeError):
                 user_account = None
 
-            # Try username lookup
             if not user_account:
                 user_account = cursor.execute('SELECT * FROM users WHERE username = ?', (str(user_id_param),)).fetchone()
 
-            if user_account:
-                user = cursor.execute('SELECT * FROM user_profiles WHERE username = ? ORDER BY id DESC LIMIT 1', (user_account['username'],)).fetchone()
+        # Resolve username
+        target_username = (
+            user_account['username'] if user_account
+            else (session_username if session_username
+            else (str(user_id_param) if user_id_param and not str(user_id_param).isdigit()
+            else None))
+        )
 
-        if not user:
+        if target_username:
+            user = cursor.execute('SELECT * FROM user_profiles WHERE username = ? ORDER BY id DESC LIMIT 1', (target_username,)).fetchone()
+        else:
             user = cursor.execute('SELECT * FROM user_profiles ORDER BY id DESC LIMIT 1').fetchone()
+            if user:
+                target_username = user['username']
+            else:
+                target_username = 'Recruit'
 
-        if not user:
-            # Create a default guest recruit profile if none exists
-            username = str(user_id_param) if user_id_param else 'Recruit'
-            cursor.execute('''
-                INSERT INTO user_profiles (
-                    username, selected_universe, selected_character, training_strategy,
-                    age, height_cm, weight_kg, medical_history, special_preferences, total_exp, current_grade
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                username, 'jjk', character_id, paradigm,
-                25, 175.0, 70.0, 'None', 'None', 0, 'Grade 4'
-            ))
-            user = cursor.execute('SELECT * FROM user_profiles WHERE id = ?', (cursor.lastrowid,)).fetchone()
-
-        username = user['username'] if user else 'Recruit'
-        age = user['age'] if user else 25
-        weight = user['weight_kg'] if user else 70.0
-        height = user['height_cm'] if user else 175.0
-        current_grade = user['current_grade'] if user else 'Grade 4'
-        current_total_exp = int(user['total_exp'] or 0)
+        username = target_username
+        age = user['age'] if user else (user_account['age'] if user_account else 25)
+        weight = user['weight_kg'] if user else (user_account['weight'] if user_account else 70.0)
+        height = user['height_cm'] if user else (user_account['height'] if user_account else 175.0)
+        current_grade = user_account['current_grade'] if user_account else (user['current_grade'] if user else 'Grade 4')
+        current_total_exp = int(user_account['total_exp'] or 0) if user_account else int(user['total_exp'] or 0 if user else 0)
 
         user_account_id = upsert_user_account(
             cursor,
@@ -612,6 +654,61 @@ def complete_workout():
             total_exp=current_total_exp
         )
 
+        if not user:
+            # Create a profile specifically for this user
+            cursor.execute('''
+                INSERT INTO user_profiles (
+                    username, selected_universe, selected_character, training_strategy,
+                    age, height_cm, weight_kg, medical_history, special_preferences, total_exp, current_grade
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                username, 'jjk', character_id, paradigm,
+                age, height, weight, 'None', 'None', current_total_exp, current_grade
+            ))
+            user = cursor.execute('SELECT * FROM user_profiles WHERE id = ?', (cursor.lastrowid,)).fetchone()
+
+        # ------------------------------------------------------------------
+        # CRITICAL: 24-HOUR WORKOUT RESTRICTION ENFORCEMENT
+        # Authoritative database check on persisted workout history
+        # ------------------------------------------------------------------
+        latest_history = cursor.execute('''
+            SELECT timestamp, (julianday('now') - julianday(timestamp)) * 24.0 AS hours_elapsed
+            FROM workout_history
+            WHERE user_id = ?
+            ORDER BY id DESC LIMIT 1
+        ''', (user_account_id,)).fetchone()
+
+        last_hours_elapsed = None
+        if latest_history and latest_history['hours_elapsed'] is not None:
+            last_hours_elapsed = float(latest_history['hours_elapsed'])
+        elif user and user['last_workout_logged_at'] and user['username'] == username:
+            try:
+                raw_time = str(user['last_workout_logged_at']).replace('Z', '+00:00')
+                last_time = datetime.fromisoformat(raw_time)
+                if last_time.tzinfo is None:
+                    last_time = last_time.replace(tzinfo=timezone.utc)
+                now_utc = datetime.now(timezone.utc)
+                last_hours_elapsed = (now_utc - last_time).total_seconds() / 3600.0
+            except Exception:
+                last_hours_elapsed = None
+
+        if last_hours_elapsed is not None and last_hours_elapsed < 24.0:
+            conn.close()
+            remaining_hours = max(0.0, 24.0 - last_hours_elapsed)
+            hours = int(remaining_hours)
+            minutes = int((remaining_hours - hours) * 60)
+            return jsonify({
+                "success": False,
+                "status": "locked",
+                "message": f"Daily training cap reached! You have already registered a workout within the last 24 hours. Recovery is mandatory before your next training arc. Cooldown active for {hours}h {minutes}m.",
+                "time_remaining_seconds": int(remaining_hours * 3600),
+                "total_exp": current_total_exp,
+                "current_grade": current_grade,
+                "exp_earned": 0,
+                "exp": 0
+            }), 200
+
+        # Unlocked: Award EXP and persist completed session
         total_exp = current_total_exp + exp_earned
         grade_number = max(1, 4 - (total_exp // 1000))
         current_grade = f"Grade {grade_number}"
@@ -619,16 +716,19 @@ def complete_workout():
         if xp_to_next_level == 1000:
             xp_to_next_level = 0 if grade_number == 1 else 1000
 
-        cursor.execute('''
-            UPDATE user_profiles
-            SET total_exp = ?,
-                current_grade = ?
-            WHERE id = ?
-        ''', (
-            total_exp,
-            current_grade,
-            user['id']
-        ))
+        if user:
+            cursor.execute('''
+                UPDATE user_profiles
+                SET total_exp = ?,
+                    current_grade = ?,
+                    weekly_workout_count = COALESCE(weekly_workout_count, 0) + 1,
+                    last_workout_logged_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (
+                total_exp,
+                current_grade,
+                user['id']
+            ))
 
         cursor.execute('''
             UPDATE users
@@ -643,8 +743,8 @@ def complete_workout():
 
         cursor.execute('''
             INSERT INTO workout_history (
-                user_id, character_id, paradigm, sets_completed, exp_earned
-            ) VALUES (?, ?, ?, ?, ?)
+                user_id, character_id, paradigm, sets_completed, exp_earned, timestamp
+            ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ''', (
             user_account_id,
             character_id,
@@ -659,14 +759,14 @@ def complete_workout():
         ).fetchone()[0]
 
         profile_data = {
-            'selectedUniverse': user['selected_universe'],
-            'selectedCharacter': character_id or user['selected_character'],
-            'strategyGoal': paradigm or user['training_strategy'],
-            'age': user['age'],
-            'height': user['height_cm'],
-            'weight': user['weight_kg'],
-            'medicalHistory': user['medical_history'],
-            'specialPreferences': user['special_preferences'],
+            'selectedUniverse': user['selected_universe'] if user else 'jjk',
+            'selectedCharacter': character_id or (user['selected_character'] if user else 'toji'),
+            'strategyGoal': paradigm or (user['training_strategy'] if user else 'train-like'),
+            'age': age,
+            'height': height,
+            'weight': weight,
+            'medicalHistory': user['medical_history'] if user else 'None',
+            'specialPreferences': user['special_preferences'] if user else 'None',
             'user_id': user_account_id,
             'completed_workouts_count': completed_workouts_count,
         }
@@ -710,11 +810,20 @@ def get_workout_history():
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
+        session_user_id = session.get('user_id')
+        session_username = session.get('username')
         username = request.args.get('username')
-        if username:
+
+        if session_user_id:
+            user_account = cursor.execute(
+                'SELECT id FROM users WHERE id = ?',
+                (session_user_id,)
+            ).fetchone()
+        elif username or session_username:
+            target_name = username or session_username
             user_account = cursor.execute(
                 'SELECT id FROM users WHERE username = ?',
-                (username,)
+                (target_name,)
             ).fetchone()
         else:
             latest_profile = cursor.execute(
