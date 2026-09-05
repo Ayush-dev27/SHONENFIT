@@ -571,6 +571,39 @@ function wireAuthPortal() {
     event.stopPropagation();
     submitLoginAuth();
   });
+
+  // About Modal (Non-destructive informational dialog)
+  const aboutBtn = document.getElementById('auth-about-btn');
+  const aboutModal = document.getElementById('auth-about-modal');
+  const aboutCloseBtn = document.getElementById('auth-about-close-btn');
+
+  aboutBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (typeof aboutModal?.showModal === 'function') {
+      aboutModal.showModal();
+    } else {
+      aboutModal?.setAttribute('open', '');
+    }
+  });
+
+  aboutCloseBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (typeof aboutModal?.close === 'function') {
+      aboutModal.close();
+    } else {
+      aboutModal?.removeAttribute('open');
+    }
+  });
+
+  aboutModal?.addEventListener('click', (e) => {
+    if (e.target === aboutModal) {
+      if (typeof aboutModal.close === 'function') {
+        aboutModal.close();
+      } else {
+        aboutModal.removeAttribute('open');
+      }
+    }
+  });
 }
 
 function syncActiveAuthPanel() {
