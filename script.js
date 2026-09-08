@@ -49,6 +49,9 @@ const API_LOGOUT_ENDPOINT = `${API_BASE}/api/logout`;
 const API_WORKOUT_COMPLETE_ENDPOINT = `${API_BASE}/api/complete-workout`;
 const API_WORKOUT_COMPLETE_LEGACY_ENDPOINT = `${API_BASE}/api/workout-complete`;
 const API_WORKOUT_HISTORY_ENDPOINT = `${API_BASE}/api/workout-history`;
+const API_JOURNEYS_ENDPOINT = `${API_BASE}/api/journeys`;
+const API_JOURNEYS_START_ENDPOINT = `${API_BASE}/api/journeys/start`;
+const API_JOURNEYS_RESUME_ENDPOINT = `${API_BASE}/api/journeys/resume`;
 const ACTIVE_PROFILE_STORAGE_KEY = 'shonenfit.activeProfile';
 const AUTH_FLAG_STORAGE_KEY = 'shonenfit.isAuthenticated';
 
@@ -106,6 +109,8 @@ const appState = {
   isSubmitting: false,
   isAuthenticated: false,
   completedWorkoutsCount: 0,
+  savedJourneys: [],
+  activeJourney: null,
   userMetrics: {
     age: null,
     height: null,
@@ -120,6 +125,10 @@ const appState = {
 const userSessionProfile = appState;
 window.userSessionProfile = userSessionProfile;
 
+const TIMER_TOTAL_SECONDS = 90;
+let timerRunning = false;
+let timerInterval = null;
+let timeRemaining = TIMER_TOTAL_SECONDS;
 let audioContext = null;
 let previousGrade = 'Grade 4';
 
@@ -140,6 +149,76 @@ const characterDatabase = {
     { id: 'all-might', name: 'All Might (Prime)', desc: 'Maximum mass hypertrophy blueprint, foundational heavy compounds, and ultimate raw force generation.', image: 'images/all-might.jpg', imgFilename: './images/all-might.jpg', objectPosition: 'center' },
   ],
 };
+
+const CANONICAL_CHARACTER_MAP = {
+  'itadori': 'itadori',
+  'yuji': 'itadori',
+  'yuji itadori': 'itadori',
+  'toji': 'toji',
+  'toji fushiguro': 'toji',
+  'fushiguro': 'toji',
+  'maki': 'maki',
+  'maki zenin': 'maki',
+  'zenin': 'maki',
+  'tanjiro': 'tanjiro',
+  'tanjiro kamado': 'tanjiro',
+  'kamado': 'tanjiro',
+  'tengen': 'tengen',
+  'tengen uzui': 'tengen',
+  'uzui': 'tengen',
+  'inosuke': 'inosuke',
+  'inosuke hashibira': 'inosuke',
+  'hashibira': 'inosuke',
+  'deku': 'deku',
+  'izuku midoriya (deku)': 'deku',
+  'izuku midoriya': 'deku',
+  'midoriya': 'deku',
+  'izuku': 'deku',
+  'bakugo': 'bakugo',
+  'katsuki bakugo': 'bakugo',
+  'katsuki': 'bakugo',
+  'all-might': 'all-might',
+  'all might': 'all-might',
+  'all_might': 'all-might',
+  'allmight': 'all-might',
+  'all might (prime)': 'all-might',
+  'might': 'all-might',
+};
+
+const CANONICAL_CHARACTER_IMAGES = {
+  'itadori': 'images/itadori.jpg',
+  'toji': 'images/toji.jpg',
+  'maki': 'images/maki.jpg',
+  'tanjiro': 'images/tanjiro.jpg',
+  'tengen': 'images/tengen.jpg',
+  'inosuke': 'images/inosuke.jpg',
+  'deku': 'images/deku.jpg',
+  'bakugo': 'images/bakugo.jpg',
+  'all-might': 'images/all-might.jpg',
+};
+
+function getCanonicalCharacterId(characterNameOrId) {
+  if (!characterNameOrId) return 'tanjiro';
+  const clean = String(characterNameOrId).trim().toLowerCase();
+  if (CANONICAL_CHARACTER_MAP[clean]) {
+    return CANONICAL_CHARACTER_MAP[clean];
+  }
+  if (clean.includes('might')) return 'all-might';
+  if (clean.includes('deku') || clean.includes('midoriya')) return 'deku';
+  if (clean.includes('bakugo')) return 'bakugo';
+  if (clean.includes('tanjiro')) return 'tanjiro';
+  if (clean.includes('tengen') || clean.includes('uzui')) return 'tengen';
+  if (clean.includes('inosuke')) return 'inosuke';
+  if (clean.includes('itadori') || clean.includes('yuji')) return 'itadori';
+  if (clean.includes('toji')) return 'toji';
+  if (clean.includes('maki')) return 'maki';
+  return clean;
+}
+
+function getCanonicalCharacterImage(characterKeyOrName) {
+  const canonId = getCanonicalCharacterId(characterKeyOrName);
+  return CANONICAL_CHARACTER_IMAGES[canonId] || 'images/toji.jpg';
+}
 
 const universeCardBackgrounds = {
   'Jujutsu Kaisen': 'images/jjk-bg.jpg.jpg',
@@ -200,6 +279,7 @@ document.addEventListener('DOMContentLoaded', () => {
   ensureWorkoutRuntimeStyles();
   bindSetTrackingSelectors();
   fetchWorkoutHistory();
+  fetchTrainingJourneys();
   wireRouteListeners();
   checkAuthSessionOnLoad();
 });
@@ -893,7 +973,10 @@ function handleAuthSuccess(result = {}, submittedPayload = {}, mode = 'login') {
     applyRankBadgeState(initialProgress.grade); 
     renderDashboardStreak(result.current_streak !== undefined ? result : profileData);
     fetchWorkoutHistory();
+    fetchTrainingJourneys();
   }
+
+  fetchTrainingJourneys();
 
   // If already-authenticated user loaded a deep protected route
   const currentRoute = normalizeRouteId(window.location.hash || window.location.pathname);
@@ -1033,6 +1116,8 @@ async function logoutAndResetSession() {
   appState.selectedCharacter = null;
   appState.selectedDirection = null;
   appState.latestWorkoutData = null;
+  appState.savedJourneys = [];
+  appState.activeJourney = null;
   appState.isAuthenticated = false;
   appState.isSubmitting = false;
   appState.userMetrics = {
@@ -1044,6 +1129,7 @@ async function logoutAndResetSession() {
     totalExp: 0,
   };
   previousGrade = 'Grade 4';
+  renderTrainingJourneys([]);
   hidePathGate();
   clearAuthError();
 
@@ -1258,6 +1344,7 @@ async function submitMetricsProfile() {
     applyRankBadgeState(previousGrade);
     renderDashboardStreak(result);
     persistActiveProfile(result.profile || payload, workoutData);
+    fetchTrainingJourneys();
 
     updateWorkoutPath();
     populateWorkoutExercises();
@@ -1378,8 +1465,8 @@ function buildProfilePayload() {
   const strategyGoal = normalizeStrategyGoal(getCheckedValue('strategyGoal') || DEFAULT_PROFILE_VALUES.strategyGoal);
 
   const payload = {
-    selectedUniverse: appState.selectedUniverse || 'Demon Slayer',
-    selectedCharacter: appState.selectedCharacter || 'Giyu Tomioka',
+    selectedUniverse: appState.selectedUniverse || 'demon-slayer',
+    selectedCharacter: getCanonicalCharacterId(appState.selectedCharacter) || 'tanjiro',
     age: getInputValue('user-age', 'age') || DEFAULT_PROFILE_VALUES.age,
     height: getInputValue('user-height', 'height') || DEFAULT_PROFILE_VALUES.height,
     weight: getInputValue('user-weight', 'weight') || DEFAULT_PROFILE_VALUES.weight,
@@ -1653,6 +1740,196 @@ function formatStrategyLabel(strategy) {
   }
 
   return strategy;
+}
+
+// ============================================================================
+// TRAINING JOURNEY ENGINE
+// ============================================================================
+
+async function fetchTrainingJourneys() {
+  if (!appState.isAuthenticated) {
+    return [];
+  }
+
+  const journeysGrid = document.getElementById('journeys-grid');
+  const emptyState = document.getElementById('journeys-empty-state');
+  if (!journeysGrid || !emptyState) {
+    return [];
+  }
+
+  try {
+    const response = await fetch(API_JOURNEYS_ENDPOINT, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      console.info(`[SHONENFIT] Training journeys fetch skipped: HTTP ${response.status}`);
+      return [];
+    }
+
+    const data = await response.json();
+    const journeys = Array.isArray(data.journeys) ? data.journeys : [];
+    appState.savedJourneys = journeys;
+    renderTrainingJourneys(journeys);
+    return journeys;
+  } catch (error) {
+    console.warn('[SHONENFIT] Could not load training journeys:', error);
+    return [];
+  }
+}
+
+function renderTrainingJourneys(journeys = []) {
+  const journeysGrid = document.getElementById('journeys-grid');
+  const emptyState = document.getElementById('journeys-empty-state');
+
+  if (!journeysGrid || !emptyState) {
+    return;
+  }
+
+  journeysGrid.innerHTML = '';
+
+  if (!journeys || journeys.length === 0) {
+    journeysGrid.style.display = 'none';
+    emptyState.classList.remove('hidden');
+    return;
+  }
+
+  emptyState.classList.add('hidden');
+  journeysGrid.style.display = 'grid';
+
+  journeys.forEach((journey) => {
+    const card = document.createElement('article');
+    card.className = `journey-card${journey.is_active ? ' journey-card--active' : ''}`;
+    card.dataset.journeyId = String(journey.id);
+
+    const relativeTime = formatRelativeActivity(journey.last_activity_at);
+    const canonicalFallbackImage = getCanonicalCharacterImage(journey.character_id || journey.character_name);
+    const charImage = (journey.image && (journey.image !== 'images/toji.jpg' || getCanonicalCharacterId(journey.character_id || journey.character_name) === 'toji'))
+      ? journey.image
+      : canonicalFallbackImage;
+
+    card.innerHTML = `
+      <div class="journey-card-top">
+        <img src="${escapeHtml(charImage)}" alt="${escapeHtml(journey.character_name)}" class="journey-thumb" onerror="this.onerror=null;this.src='${escapeHtml(canonicalFallbackImage)}'">
+        <div class="journey-meta">
+          <h4 class="journey-character-name">${escapeHtml(journey.character_name)}</h4>
+          <span class="journey-universe-name">${escapeHtml(journey.universe_name)}</span>
+        </div>
+      </div>
+
+      <div class="journey-badges">
+        <span class="journey-badge journey-badge--mode">${escapeHtml(journey.mode_label)}</span>
+        ${journey.is_active ? '<span class="journey-badge journey-badge--active">Active Arc</span>' : ''}
+      </div>
+
+      <div class="journey-stats">
+        <div class="journey-stat-row">
+          <span class="journey-stat-label">Progress</span>
+          <span class="journey-stat-value">Day ${journey.current_day} (${escapeHtml(journey.current_track_name)})</span>
+        </div>
+        <div class="journey-stat-row">
+          <span class="journey-stat-label">Completed</span>
+          <span class="journey-stat-value">${journey.completed_workouts} Workout${journey.completed_workouts === 1 ? '' : 's'}</span>
+        </div>
+        <div class="journey-stat-row">
+          <span class="journey-stat-label">Last Activity</span>
+          <span class="journey-stat-value">${escapeHtml(relativeTime)}</span>
+        </div>
+      </div>
+
+      <button type="button" class="journey-resume-btn" onclick="resumeJourney(${journey.id})">
+        <span>Resume Journey</span>
+        <span aria-hidden="true">&rarr;</span>
+      </button>
+    `;
+
+    journeysGrid.appendChild(card);
+  });
+}
+
+function formatRelativeActivity(timestampStr) {
+  if (!timestampStr) return 'Recently';
+  try {
+    const raw = String(timestampStr).replace('Z', '+00:00');
+    const date = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z');
+    if (Number.isNaN(date.getTime())) return 'Recently';
+
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffHours < 1) return 'Just now';
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    return date.toLocaleDateString();
+  } catch (e) {
+    return 'Recently';
+  }
+}
+
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+async function resumeJourney(journeyId) {
+  if (!appState.isAuthenticated) {
+    showAuthPortal();
+    return;
+  }
+
+  try {
+    const response = await fetch(API_JOURNEYS_RESUME_ENDPOINT, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({ journey_id: journeyId }),
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      alert(errData.message || 'Failed to resume training journey.');
+      return;
+    }
+
+    const result = await response.json();
+    const journey = result.journey;
+    const workoutData = normalizeWorkoutData(result.workout_data);
+
+    if (!workoutData) {
+      alert('Unable to load workout protocol for this journey.');
+      return;
+    }
+
+    appState.selectedUniverse = normalizeUniverseKey(journey.universe_name || journey.universe);
+    appState.selectedCharacter = journey.character_name;
+    appState.selectedDirection = journey.mode;
+    appState.latestWorkoutData = workoutData;
+    appState.activeJourney = journey;
+
+    persistActiveProfile(userSessionProfile, workoutData);
+    renderDashboardSummary(workoutData);
+    updateWorkoutPath();
+    populateWorkoutExercises();
+    fetchTrainingJourneys();
+    navigateView('workout-view');
+  } catch (error) {
+    console.error('[SHONENFIT] Resume journey error:', error);
+    alert('Could not resume journey. Please check server connection.');
+  }
 }
 
 // ============================================================================
@@ -1975,74 +2252,96 @@ function wireWorkoutControlButtons() {
     backButton.removeAttribute('onclick');
     backButton.addEventListener('click', (event) => {
       event.preventDefault();
-      pauseRestTimer();
+      try {
+        pauseRestTimer();
+      } catch (timerErr) {
+        console.warn('[SHONENFIT] Rest timer pause ignored during navigation:', timerErr);
+      }
       navigateView('dashboard-view');
     });
   }
 }
 
 async function toggleRestTimer() {
-  await unlockTimerAudioContext();
+  try {
+    await unlockTimerAudioContext();
 
-  if (timeRemaining <= 0) {
-    timeRemaining = TIMER_TOTAL_SECONDS;
-    renderTimer();
-  }
-
-  if (timerRunning) {
-    pauseRestTimer();
-    return;
-  }
-
-  timerRunning = true;
-  updateTimerButton('PAUSE ENERGY FOCUS');
-
-  timerInterval = window.setInterval(() => {
-    timeRemaining = Math.max(0, timeRemaining - 1);
-    renderTimer();
-
-    if (timeRemaining === 0) {
-      stopRestTimer();
-      updateTimerButton('START REST');
-      playTimerCompleteCue();
+    if (timeRemaining <= 0) {
+      timeRemaining = TIMER_TOTAL_SECONDS;
+      renderTimer();
     }
-  }, 1000);
+
+    if (timerRunning) {
+      pauseRestTimer();
+      return;
+    }
+
+    timerRunning = true;
+    updateTimerButton('PAUSE ENERGY FOCUS');
+
+    timerInterval = window.setInterval(() => {
+      timeRemaining = Math.max(0, timeRemaining - 1);
+      renderTimer();
+
+      if (timeRemaining === 0) {
+        stopRestTimer();
+        updateTimerButton('START REST');
+        playTimerCompleteCue();
+      }
+    }, 1000);
+  } catch (err) {
+    console.warn('[SHONENFIT] Non-fatal toggleRestTimer error:', err);
+  }
 }
 
 async function unlockTimerAudioContext() {
-  const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+  try {
+    const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
 
-  if (!audioContext && AudioContextConstructor) {
-    audioContext = new AudioContextConstructor();
-  }
+    if (!audioContext && AudioContextConstructor) {
+      audioContext = new AudioContextConstructor();
+    }
 
-  if (audioContext?.state === 'suspended') {
-    await audioContext.resume();
+    if (audioContext?.state === 'suspended') {
+      await audioContext.resume();
+    }
+  } catch (audioErr) {
+    console.warn('[SHONENFIT] AudioContext initialization ignored:', audioErr);
   }
 }
 
 function pauseRestTimer() {
-  stopRestTimer();
-
-  if (timeRemaining > 0) {
-    updateTimerButton(timeRemaining === TIMER_TOTAL_SECONDS ? 'Start Rest / Resume Timer' : 'Start Rest / Resume Timer');
+  try {
+    stopRestTimer();
+    if (typeof timeRemaining !== 'undefined' && timeRemaining > 0) {
+      updateTimerButton('Start Rest / Resume Timer');
+    }
+  } catch (err) {
+    console.warn('[SHONENFIT] Non-fatal pauseRestTimer error:', err);
   }
 }
 
 function stopRestTimer() {
-  if (timerInterval) {
-    window.clearInterval(timerInterval);
-    timerInterval = null;
+  try {
+    if (typeof timerInterval !== 'undefined' && timerInterval !== null) {
+      window.clearInterval(timerInterval);
+      timerInterval = null;
+    }
+  } catch (err) {
+    console.warn('[SHONENFIT] Non-fatal stopRestTimer error:', err);
   }
-
   timerRunning = false;
 }
 
 function resetRestTimer() {
-  stopRestTimer();
-  timeRemaining = TIMER_TOTAL_SECONDS;
-  renderTimer();
-  updateTimerButton('Start Rest / Resume Timer');
+  try {
+    stopRestTimer();
+    timeRemaining = typeof TIMER_TOTAL_SECONDS !== 'undefined' ? TIMER_TOTAL_SECONDS : 90;
+    renderTimer();
+    updateTimerButton('Start Rest / Resume Timer');
+  } catch (err) {
+    console.warn('[SHONENFIT] Non-fatal resetRestTimer error:', err);
+  }
 }
 
 function initializeTimerDisplay() {
@@ -2386,8 +2685,9 @@ async function submitWorkoutCompletion(event) {
   }
   appState.isCompletingWorkout = true;
 
+  let response;
   try {
-    const response = await fetch(API_WORKOUT_COMPLETE_ENDPOINT, {
+    response = await fetch(API_WORKOUT_COMPLETE_ENDPOINT, {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -2395,15 +2695,32 @@ async function submitWorkoutCompletion(event) {
       },
       body: JSON.stringify(payload),
     });
-    const result = await response.json().catch(() => ({}));
-
-    // Authoritative check: if locked or rejected by backend, award ZERO EXP and show recovery notice
-    if (result.status === 'locked' || result.success === false) {
-      showDailyTrainingCapWarning(result.message || 'Daily training cap reached! Recovery is mandatory.');
-      navigateView('dashboard-view');
-      return;
+  } catch (networkError) {
+    console.error('[SHONENFIT] Network failure submitting workout:', networkError);
+    showDailyTrainingCapWarning('Unable to reach server. Please verify connection.', 'Network Notice');
+    return;
+  } finally {
+    appState.isCompletingWorkout = false;
+    if (completeButton) {
+      completeButton.disabled = false;
     }
+  }
 
+  let result = {};
+  try {
+    result = await response.json();
+  } catch (jsonErr) {
+    console.warn('[SHONENFIT] Could not parse server response JSON:', jsonErr);
+  }
+
+  // Authoritative check: if locked or rejected by backend, award ZERO EXP and show recovery notice
+  if (!response.ok || result.status === 'locked' || result.success === false) {
+    showDailyTrainingCapWarning(result.message || 'Daily training cap reached! Recovery is mandatory.', 'Recovery Lock Active');
+    navigateView('dashboard-view');
+    return;
+  }
+
+  try {
     // 1. Capture the new EXP and completed workouts count from the authoritative backend
     if (result.total_exp !== undefined) {
       appState.userMetrics.totalExp = Number(result.total_exp);
@@ -2442,6 +2759,7 @@ async function submitWorkoutCompletion(event) {
     updateDashboardExpBoost(effectiveSets, result);
     renderDashboardStreak(result);
     fetchWorkoutHistory();
+    fetchTrainingJourneys();
 
     if (appState.latestWorkoutData) {
       renderDashboardSummary(appState.latestWorkoutData);
@@ -2449,23 +2767,24 @@ async function submitWorkoutCompletion(event) {
       populateWorkoutExercises();
     }
     applyRankBadgeState(progression.grade);
-    resetRestTimer();
+
+    try {
+      resetRestTimer();
+    } catch (timerErr) {
+      console.warn('[SHONENFIT] Rest timer reset warning during workout completion:', timerErr);
+    }
 
     // 5. Standard successful completion: cleanly route directly to the existing dashboard
     navigateView('dashboard-view');
 
-  } catch (error) {
-    console.error('[SHONENFIT] Workout submission error:', error);
-    showDailyTrainingCapWarning('Unable to reach server. Please verify connection.');
-  } finally {
-    appState.isCompletingWorkout = false;
-    if (completeButton) {
-      completeButton.disabled = false;
-    }
+  } catch (clientError) {
+    console.error('[SHONENFIT] Client error processing workout completion UI:', clientError);
+    // Ensure routing to dashboard proceeds so user is never trapped
+    navigateView('dashboard-view');
   }
 }
 
-function showDailyTrainingCapWarning(message) {
+function showDailyTrainingCapWarning(message, title = 'Recovery Lock Active') {
   const warningMessage = message || 'Daily training cap reached! Rest and recovery are mandatory parts of a Shonen training arc.';
   let warningCard = document.getElementById('daily-training-cap-warning');
 
@@ -2497,7 +2816,7 @@ function showDailyTrainingCapWarning(message) {
   }
 
   warningCard.innerHTML = `
-    <span style="display:block; color:#ff4668; font-size:0.82rem; margin-bottom:0.35rem; text-transform:uppercase;">Recovery Lock Active</span>
+    <span style="display:block; color:#ff4668; font-size:0.82rem; margin-bottom:0.35rem; text-transform:uppercase;">${escapeHtml(title)}</span>
     <span>${warningMessage}</span>
   `;
   window.requestAnimationFrame(() => {
@@ -2512,10 +2831,8 @@ function showDailyTrainingCapWarning(message) {
 
 function getActiveCharacterId() {
   const selectedName = appState.selectedCharacter;
-  const characters = characterDatabase[appState.selectedUniverse] || [];
-  const activeCharacter = characters.find((character) => character.name === selectedName);
-
-  return activeCharacter?.id || selectedName || 'unassigned';
+  if (!selectedName) return 'unassigned';
+  return getCanonicalCharacterId(selectedName);
 }
 
 function updateDashboardExpBoost(completedSets, progressionData = {}) {
@@ -2576,6 +2893,8 @@ window.selectCharacter = selectCharacter;
 window.accessWorkout = accessWorkout;
 window.toggleSet = toggleSet;
 window.toggleRestTimer = toggleRestTimer;
+window.resumeJourney = resumeJourney;
+window.fetchTrainingJourneys = fetchTrainingJourneys;
 
 console.log('[SHONENFIT] Live backend application initialized'); 
 

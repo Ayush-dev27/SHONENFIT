@@ -28,6 +28,139 @@ CHARACTER_DISPLAY_NAMES = {
     'all-might': 'All Might (Prime)',
 }
 
+CHARACTER_UNIVERSE_MAP = {
+    'itadori': 'jjk',
+    'yuji': 'jjk',
+    'toji': 'jjk',
+    'maki': 'jjk',
+    'tanjiro': 'demon-slayer',
+    'tengen': 'demon-slayer',
+    'inosuke': 'demon-slayer',
+    'deku': 'mha',
+    'bakugo': 'mha',
+    'all-might': 'mha',
+}
+
+UNIVERSE_DISPLAY_NAMES = {
+    'jjk': 'Jujutsu Kaisen',
+    'demon-slayer': 'Demon Slayer',
+    'mha': 'My Hero Academia',
+}
+
+CHARACTER_IMAGES = {
+    'itadori': 'images/itadori.jpg',
+    'toji': 'images/toji.jpg',
+    'maki': 'images/maki.jpg',
+    'tanjiro': 'images/tanjiro.jpg',
+    'tengen': 'images/tengen.jpg',
+    'inosuke': 'images/inosuke.jpg',
+    'deku': 'images/deku.jpg',
+    'bakugo': 'images/bakugo.jpg',
+    'all-might': 'images/all-might.jpg',
+}
+
+CHARACTER_TEMPLATES_KEYS = list(CHARACTER_DISPLAY_NAMES.keys())
+
+CANONICAL_CHARACTERS = [
+    'itadori',
+    'toji',
+    'maki',
+    'tanjiro',
+    'tengen',
+    'inosuke',
+    'deku',
+    'bakugo',
+    'all-might',
+]
+
+CHARACTER_ALIAS_MAP = {
+    'all-might': 'all-might',
+    'all_might': 'all-might',
+    'allmight': 'all-might',
+    'all might': 'all-might',
+    'all might (prime)': 'all-might',
+    'all': 'all-might',
+    'might': 'all-might',
+    'yuji': 'itadori',
+    'itadori': 'itadori',
+    'yuji itadori': 'itadori',
+    'toji': 'toji',
+    'fushiguro': 'toji',
+    'toji fushiguro': 'toji',
+    'maki': 'maki',
+    'zenin': 'maki',
+    'maki zenin': 'maki',
+    'tanjiro': 'tanjiro',
+    'kamado': 'tanjiro',
+    'tanjiro kamado': 'tanjiro',
+    'tengen': 'tengen',
+    'uzui': 'tengen',
+    'tengen uzui': 'tengen',
+    'inosuke': 'inosuke',
+    'hashibira': 'inosuke',
+    'inosuke hashibira': 'inosuke',
+    'deku': 'deku',
+    'izuku': 'deku',
+    'midoriya': 'deku',
+    'izuku midoriya': 'deku',
+    'izuku midoriya (deku)': 'deku',
+    'bakugo': 'bakugo',
+    'katsuki': 'bakugo',
+    'katsuki bakugo': 'bakugo',
+}
+
+def normalize_character_id(raw_char: str) -> str:
+    if not raw_char:
+        return 'toji'
+    clean = str(raw_char).lower().strip()
+    if clean in CHARACTER_ALIAS_MAP:
+        return CHARACTER_ALIAS_MAP[clean]
+
+    # Keyword / token matching for robust matching
+    if 'might' in clean:
+        return 'all-might'
+    if 'yuji' in clean or 'itadori' in clean:
+        return 'itadori'
+    if 'toji' in clean or 'fushiguro' in clean:
+        return 'toji'
+    if 'maki' in clean or 'zenin' in clean:
+        return 'maki'
+    if 'tanjiro' in clean or 'kamado' in clean:
+        return 'tanjiro'
+    if 'tengen' in clean or 'uzui' in clean:
+        return 'tengen'
+    if 'inosuke' in clean or 'hashibira' in clean:
+        return 'inosuke'
+    if 'deku' in clean or 'midoriya' in clean or 'izuku' in clean:
+        return 'deku'
+    if 'bakugo' in clean or 'katsuki' in clean:
+        return 'bakugo'
+
+    # Fallback slug match
+    slug = clean.replace(' ', '-').replace('_', '-')
+    for k in CANONICAL_CHARACTERS:
+        if k in slug:
+            return k
+
+    return clean
+
+def normalize_universe_id(raw_uni: str, character_id: str = None) -> str:
+    clean = str(raw_uni or '').lower().strip()
+    if 'jujutsu' in clean or clean == 'jjk':
+        return 'jjk'
+    if 'demon' in clean or clean == 'demon-slayer':
+        return 'demon-slayer'
+    if 'hero' in clean or clean == 'mha':
+        return 'mha'
+    if character_id:
+        canon_c = normalize_character_id(character_id)
+        return CHARACTER_UNIVERSE_MAP.get(canon_c, 'jjk')
+    return 'jjk'
+
+def normalize_mode_id(raw_mode: str) -> str:
+    clean = str(raw_mode or 'train-like').lower().replace('_', '-').strip()
+    return 'physique' if 'physique' in clean else 'train-like'
+
 def ensure_database_tables():
     conn = sqlite3.connect(DATABASE_FILE)
     conn.execute('PRAGMA foreign_keys = ON')
@@ -121,6 +254,101 @@ def ensure_database_tables():
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )
     ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS training_journeys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            universe TEXT NOT NULL,
+            character_id TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            completed_workouts INTEGER DEFAULT 0,
+            current_track TEXT DEFAULT 'track_a',
+            last_activity_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(user_id, universe, character_id, mode)
+        )
+    ''')
+
+    # Safe idempotent migration and deduplication for training_journeys
+    try:
+        all_journeys = cursor.execute('''
+            SELECT id, user_id, universe, character_id, mode, completed_workouts, current_track, last_activity_at
+            FROM training_journeys
+        ''').fetchall()
+
+        for j in all_journeys:
+            j_id = j[0]
+            u_id = j[1]
+            raw_u = j[2]
+            raw_c = j[3]
+            raw_m = j[4]
+            workouts_cnt = int(j[5] or 0)
+            cur_track = j[6]
+            last_ts = j[7]
+
+            canon_c = normalize_character_id(raw_c)
+            canon_u = normalize_universe_id(raw_u, canon_c)
+            canon_m = normalize_mode_id(raw_m)
+
+            if raw_c != canon_c or raw_u != canon_u or raw_m != canon_m:
+                canonical_row = cursor.execute('''
+                    SELECT id, completed_workouts, current_track, last_activity_at
+                    FROM training_journeys
+                    WHERE user_id = ? AND universe = ? AND character_id = ? AND mode = ? AND id != ?
+                ''', (u_id, canon_u, canon_c, canon_m, j_id)).fetchone()
+
+                if canonical_row:
+                    canon_row_id = canonical_row[0]
+                    canon_cnt = int(canonical_row[1] or 0)
+                    canon_ts = str(canonical_row[3] or '')
+                    best_workouts = max(canon_cnt, workouts_cnt)
+                    t_idx = best_workouts % 4
+                    t_track = f"track_{chr(97 + t_idx)}"
+                    best_ts = max(canon_ts, str(last_ts or ''))
+
+                    cursor.execute('''
+                        UPDATE training_journeys
+                        SET completed_workouts = ?, current_track = ?, last_activity_at = ?
+                        WHERE id = ?
+                    ''', (best_workouts, t_track, best_ts, canon_row_id))
+
+                    cursor.execute('DELETE FROM training_journeys WHERE id = ?', (j_id,))
+                else:
+                    cursor.execute('''
+                        UPDATE training_journeys
+                        SET universe = ?, character_id = ?, mode = ?
+                        WHERE id = ?
+                    ''', (canon_u, canon_c, canon_m, j_id))
+    except Exception as e:
+        pass
+
+    # Safe idempotent backfill for existing workout_history records
+    try:
+        existing_groups = cursor.execute('''
+            SELECT user_id, character_id, paradigm, COUNT(*) as cnt, MAX(timestamp) as last_ts
+            FROM workout_history
+            GROUP BY user_id, character_id, paradigm
+        ''').fetchall()
+        for g in existing_groups:
+            uid = g[0]
+            raw_c = str(g[1] or '').lower().strip()
+            c_key = normalize_character_id(raw_c)
+            p_mode = normalize_mode_id(str(g[2] or ''))
+            u_key = normalize_universe_id(CHARACTER_UNIVERSE_MAP.get(c_key, 'jjk'), c_key)
+            c_count = g[3]
+            t_idx = c_count % 4
+            c_track = f"track_{chr(97 + t_idx)}"
+            l_ts = g[4] or datetime.now().isoformat()
+            cursor.execute('''
+                INSERT OR IGNORE INTO training_journeys (
+                    user_id, universe, character_id, mode, completed_workouts, current_track, last_activity_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (uid, u_key, c_key, p_mode, c_count, c_track, l_ts))
+    except Exception as e:
+        pass
+
     conn.commit()
     conn.close()
 
@@ -144,7 +372,111 @@ def serve_static(path):
     # This automatically catches requests for style.css, script.js, images, or falls back to SPA index.html
     if os.path.exists(path) and os.path.isfile(path):
         return send_from_directory('.', path)
-    return send_from_directory('.', 'index.html') 
+    return send_from_directory('.', 'index.html')
+
+
+def resolve_request_user(cursor):
+    session_user_id = session.get('user_id')
+    if session_user_id:
+        try:
+            acc = cursor.execute('SELECT * FROM users WHERE id = ?', (int(session_user_id),)).fetchone()
+            if acc:
+                return acc
+        except (ValueError, TypeError):
+            pass
+
+    session_username = session.get('username')
+    if session_username:
+        acc = cursor.execute('SELECT * FROM users WHERE username = ?', (str(session_username),)).fetchone()
+        if acc:
+            return acc
+
+    data = request.get_json(silent=True) or {}
+    param_uid = request.args.get('user_id') or data.get('user_id') or data.get('userId')
+    if param_uid:
+        try:
+            acc = cursor.execute('SELECT * FROM users WHERE id = ?', (int(param_uid),)).fetchone()
+            if acc:
+                return acc
+        except (ValueError, TypeError):
+            pass
+        acc = cursor.execute('SELECT * FROM users WHERE username = ?', (str(param_uid),)).fetchone()
+        if acc:
+            return acc
+
+    param_uname = request.args.get('username') or data.get('username')
+    if param_uname:
+        acc = cursor.execute('SELECT * FROM users WHERE username = ?', (str(param_uname),)).fetchone()
+        if acc:
+            return acc
+
+    return None
+
+def format_journey_dict(row, is_active=False):
+    char_id = normalize_character_id(row['character_id'])
+    uni_id = normalize_universe_id(row['universe'], char_id)
+    mode_id = normalize_mode_id(row['mode'])
+    completed_workouts = int(row['completed_workouts'] or 0)
+    track_idx = completed_workouts % 4
+    track_key = f"track_{chr(97 + track_idx)}"
+    track_name = f"Track {chr(65 + track_idx)}"
+
+    return {
+        'id': row['id'],
+        'user_id': row['user_id'],
+        'universe': uni_id,
+        'universe_name': UNIVERSE_DISPLAY_NAMES.get(uni_id, uni_id),
+        'character_id': char_id,
+        'character_name': CHARACTER_DISPLAY_NAMES.get(char_id, char_id.title()),
+        'mode': mode_id,
+        'mode_label': 'Physique Like Them' if mode_id == 'physique' else 'Train Like Them',
+        'completed_workouts': completed_workouts,
+        'current_day': completed_workouts + 1,
+        'current_track': track_key,
+        'current_track_name': track_name,
+        'last_activity_at': row['last_activity_at'],
+        'image': CHARACTER_IMAGES.get(char_id, 'images/toji.jpg'),
+        'is_active': is_active
+    }
+
+def get_or_create_journey(cursor, user_id, universe, character_id, mode):
+    char_key = normalize_character_id(character_id)
+    uni_key = normalize_universe_id(universe, char_key)
+    mode_key = normalize_mode_id(mode)
+
+    completed_count = cursor.execute('''
+        SELECT COUNT(*) FROM workout_history 
+        WHERE user_id = ? AND character_id = ? AND paradigm = ?
+    ''', (user_id, char_key, mode_key)).fetchone()[0]
+
+    track_idx = completed_count % 4
+    current_track = f"track_{chr(97 + track_idx)}"
+
+    cursor.execute('''
+        INSERT INTO training_journeys (
+            user_id, universe, character_id, mode, completed_workouts, current_track, last_activity_at
+        ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id, universe, character_id, mode) DO UPDATE SET
+            completed_workouts = excluded.completed_workouts,
+            current_track = excluded.current_track,
+            last_activity_at = CURRENT_TIMESTAMP
+    ''', (user_id, uni_key, char_key, mode_key, completed_count, current_track))
+
+    journey_row = cursor.execute('''
+        SELECT id, user_id, universe, character_id, mode, completed_workouts, current_track, last_activity_at, created_at
+        FROM training_journeys 
+        WHERE user_id = ? AND universe = ? AND character_id = ? AND mode = ?
+    ''', (user_id, uni_key, char_key, mode_key)).fetchone()
+
+    if isinstance(journey_row, sqlite3.Row):
+        journey_dict = dict(journey_row)
+    elif journey_row:
+        cols = ['id', 'user_id', 'universe', 'character_id', 'mode', 'completed_workouts', 'current_track', 'last_activity_at', 'created_at']
+        journey_dict = dict(zip(cols, journey_row))
+    else:
+        journey_dict = {}
+
+    return journey_dict, completed_count
 
 def upsert_user_account(cursor, username, age, weight, height, current_grade='Grade 4', total_exp=0, password_hash=None):
     safe_password_hash = password_hash or 'local-dev-auth-pending'
@@ -368,33 +700,47 @@ def create_profile():
             'SELECT COUNT(*) FROM workout_history WHERE user_id = ?',
             (user_id,)
         ).fetchone()[0] if user_account else 0
-        conn.close()
 
         if user_account and user_profile:
+            norm_c = normalize_character_id(user_profile['selected_character'])
+            norm_m = normalize_mode_id(user_profile['training_strategy'])
+            norm_u = normalize_universe_id(user_profile['selected_universe'], norm_c)
+
+            journey_workouts_count = cursor.execute('''
+                SELECT COUNT(*) FROM workout_history
+                WHERE user_id = ? AND character_id = ? AND paradigm = ?
+            ''', (user_id, norm_c, norm_m)).fetchone()[0]
+
+            journey_row, _ = get_or_create_journey(cursor, user_id, norm_u, norm_c, norm_m)
+            conn.close()
+
             profile_data = {
-                'selectedUniverse': user_profile['selected_universe'],
-                'selectedCharacter': user_profile['selected_character'],
-                'strategyGoal': user_profile['training_strategy'],
+                'selectedUniverse': norm_u,
+                'selectedCharacter': norm_c,
+                'strategyGoal': norm_m,
                 'age': user_profile['age'],
                 'height': user_profile['height_cm'],
                 'weight': user_profile['weight_kg'],
                 'medicalHistory': user_profile['medical_history'],
                 'specialPreferences': user_profile['special_preferences'],
                 'user_id': user_id,
-                'completed_workouts_count': completed_workouts_count,
+                'completed_workouts_count': journey_workouts_count,
             }
-            routine_payload = generate_custom_routine(profile_data, completed_workouts_count=completed_workouts_count)
+            routine_payload = generate_custom_routine(profile_data, completed_workouts_count=journey_workouts_count)
             return jsonify({
                 "status": "success",
                 "user_id": user_id,
                 "profile": dict(user_profile),
+                "journey": format_journey_dict(journey_row, is_active=True),
                 "workout_data": routine_payload,
                 "current_streak": calculate_streak(user_id),
                 "completed_workouts_count": completed_workouts_count,
+                "journey_completed_count": journey_workouts_count,
                 "current_grade": user_account['current_grade'],
                 "total_exp": user_account['total_exp']
             }), 200
 
+        conn.close()
         return jsonify({
             "status": "success",
             "user_id": user_id,
@@ -406,7 +752,7 @@ def create_profile():
     try:
         data = request.get_json(silent=True) or {}
 
-        username = data.get('username', 'Recruit')
+        username = data.get('username') or session.get('username') or 'Recruit'
         selected_universe = data.get('selectedUniverse')
         selected_character = data.get('selectedCharacter')
         training_strategy = data.get('strategyGoal')
@@ -448,6 +794,14 @@ def create_profile():
             (user_account_id,)
         ).fetchone()[0]
 
+        norm_c = normalize_character_id(selected_character)
+        norm_m = normalize_mode_id(training_strategy)
+        norm_u = normalize_universe_id(selected_universe, norm_c)
+
+        journey_row, journey_workouts_count = get_or_create_journey(
+            cursor, user_account_id, norm_u, norm_c, norm_m
+        )
+
         session['user_id'] = user_account_id
         session['username'] = username
 
@@ -455,8 +809,11 @@ def create_profile():
         conn.close()
 
         data['user_id'] = user_account_id
-        data['completed_workouts_count'] = completed_workouts_count
-        routine_payload = generate_custom_routine(data, completed_workouts_count=completed_workouts_count)
+        data['completed_workouts_count'] = journey_workouts_count
+        data['selectedUniverse'] = norm_u
+        data['selectedCharacter'] = norm_c
+        data['strategyGoal'] = norm_m
+        routine_payload = generate_custom_routine(data, completed_workouts_count=journey_workouts_count)
 
         return jsonify({
             "status": "success",
@@ -464,6 +821,8 @@ def create_profile():
             "initial_grade": "Grade 4",
             "current_streak": calculate_streak(user_account_id),
             "completed_workouts_count": completed_workouts_count,
+            "journey_completed_count": journey_workouts_count,
+            "journey": format_journey_dict(journey_row, is_active=True),
             "workout_data": routine_payload
         }), 201
 
@@ -758,19 +1117,56 @@ def complete_workout():
             (user_account_id,)
         ).fetchone()[0]
 
+        norm_char = normalize_character_id(character_id)
+        norm_mode = normalize_mode_id(paradigm)
+        norm_uni = normalize_universe_id(user['selected_universe'] if user else None, norm_char)
+
+        # Authoritative count of completed workouts for THIS character/mode journey
+        journey_workouts_count = cursor.execute('''
+            SELECT COUNT(*) FROM workout_history
+            WHERE user_id = ? AND character_id = ? AND paradigm = ?
+        ''', (user_account_id, norm_char, norm_mode)).fetchone()[0]
+
+        next_track_idx = journey_workouts_count % 4
+        next_track_key = f"track_{chr(97 + next_track_idx)}"
+
+        cursor.execute('''
+            INSERT INTO training_journeys (
+                user_id, universe, character_id, mode, completed_workouts, current_track, last_activity_at
+            ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id, universe, character_id, mode) DO UPDATE SET
+                completed_workouts = excluded.completed_workouts,
+                current_track = excluded.current_track,
+                last_activity_at = CURRENT_TIMESTAMP
+        ''', (user_account_id, norm_uni, norm_char, norm_mode, journey_workouts_count, next_track_key))
+
+        journey_row = cursor.execute('''
+            SELECT id, user_id, universe, character_id, mode, completed_workouts, current_track, last_activity_at, created_at
+            FROM training_journeys
+            WHERE user_id = ? AND universe = ? AND character_id = ? AND mode = ?
+        ''', (user_account_id, norm_uni, norm_char, norm_mode)).fetchone()
+
+        if isinstance(journey_row, sqlite3.Row):
+            journey_dict = dict(journey_row)
+        elif journey_row:
+            cols = ['id', 'user_id', 'universe', 'character_id', 'mode', 'completed_workouts', 'current_track', 'last_activity_at', 'created_at']
+            journey_dict = dict(zip(cols, journey_row))
+        else:
+            journey_dict = {}
+
         profile_data = {
-            'selectedUniverse': user['selected_universe'] if user else 'jjk',
-            'selectedCharacter': character_id or (user['selected_character'] if user else 'toji'),
-            'strategyGoal': paradigm or (user['training_strategy'] if user else 'train-like'),
+            'selectedUniverse': norm_uni,
+            'selectedCharacter': norm_char,
+            'strategyGoal': norm_mode,
             'age': age,
             'height': height,
             'weight': weight,
             'medicalHistory': user['medical_history'] if user else 'None',
             'specialPreferences': user['special_preferences'] if user else 'None',
             'user_id': user_account_id,
-            'completed_workouts_count': completed_workouts_count,
+            'completed_workouts_count': journey_workouts_count,
         }
-        next_workout_data = generate_custom_routine(profile_data, completed_workouts_count=completed_workouts_count)
+        next_workout_data = generate_custom_routine(profile_data, completed_workouts_count=journey_workouts_count)
         new_track = next_workout_data.get('daily_track', 'track_a')
 
         conn.commit()
@@ -793,6 +1189,8 @@ def complete_workout():
             "current_streak": current_streak,
             "completed_sessions": completed_workouts_count,
             "completed_workouts_count": completed_workouts_count,
+            "journey_completed_count": journey_workouts_count,
+            "journey": format_journey_dict(journey_dict, is_active=True),
             "workout_data": next_workout_data
         }), 200
 
@@ -873,6 +1271,236 @@ def get_workout_history():
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400 
+
+
+@app.route('/api/journeys', methods=['GET'])
+def get_user_journeys():
+    try:
+        ensure_database_tables()
+        conn = sqlite3.connect(DATABASE_FILE)
+        conn.execute('PRAGMA foreign_keys = ON')
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        user = resolve_request_user(cursor)
+        if not user:
+            conn.close()
+            return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+        # Get latest active profile to know current character & mode
+        active_profile = cursor.execute(
+            'SELECT * FROM user_profiles WHERE username = ? ORDER BY id DESC LIMIT 1',
+            (user['username'],)
+        ).fetchone()
+
+        active_char = normalize_character_id(active_profile['selected_character']) if active_profile else None
+        active_mode = normalize_mode_id(active_profile['training_strategy']) if active_profile else None
+
+        rows = cursor.execute('''
+            SELECT * FROM training_journeys
+            WHERE user_id = ?
+            ORDER BY datetime(last_activity_at) DESC, id DESC
+        ''', (user['id'],)).fetchall()
+
+        journeys = []
+        for r in rows:
+            # Synchronize completed_workouts with authoritative workout_history
+            wh_count = cursor.execute('''
+                SELECT COUNT(*) FROM workout_history
+                WHERE user_id = ? AND character_id = ? AND paradigm = ?
+            ''', (user['id'], r['character_id'], r['mode'])).fetchone()[0]
+
+            if wh_count != r['completed_workouts']:
+                t_idx = wh_count % 4
+                t_track = f"track_{chr(97 + t_idx)}"
+                cursor.execute('''
+                    UPDATE training_journeys
+                    SET completed_workouts = ?, current_track = ?
+                    WHERE id = ?
+                ''', (wh_count, t_track, r['id']))
+                conn.commit()
+                r = cursor.execute('SELECT * FROM training_journeys WHERE id = ?', (r['id'],)).fetchone()
+
+            is_active = (r['character_id'] == active_char and r['mode'] == active_mode)
+            journeys.append(format_journey_dict(r, is_active=is_active))
+
+        conn.close()
+        return jsonify({
+            "status": "success",
+            "journeys": journeys,
+            "count": len(journeys)
+        }), 200
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+
+@app.route('/api/journeys/start', methods=['POST'])
+def start_or_get_journey():
+    try:
+        ensure_database_tables()
+        data = request.get_json(silent=True) or {}
+
+        conn = sqlite3.connect(DATABASE_FILE)
+        conn.execute('PRAGMA foreign_keys = ON')
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        user = resolve_request_user(cursor)
+        if not user:
+            conn.close()
+            return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+        raw_char = data.get('character') or data.get('character_id') or data.get('selectedCharacter') or 'toji'
+        char_key = normalize_character_id(raw_char)
+        raw_uni = data.get('universe') or data.get('selectedUniverse')
+        uni_key = normalize_universe_id(raw_uni, char_key)
+        raw_mode = data.get('mode') or data.get('strategy') or data.get('strategyGoal') or 'train-like'
+        mode_key = normalize_mode_id(raw_mode)
+
+        journey_row, completed_count = get_or_create_journey(cursor, user['id'], uni_key, char_key, mode_key)
+
+        # Update or insert active profile for this user
+        cursor.execute('''
+            INSERT INTO user_profiles (
+                username, selected_universe, selected_character, training_strategy,
+                age, height_cm, weight_kg, medical_history, special_preferences,
+                total_exp, current_grade, weekly_workout_count, last_workout_logged_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
+        ''', (
+            user['username'], uni_key, char_key, mode_key,
+            user['age'], user['height'], user['weight'],
+            data.get('medicalHistory', 'None'), data.get('specialPreferences', 'None'),
+            user['total_exp'], user['current_grade']
+        ))
+
+        profile_data = {
+            'selectedUniverse': uni_key,
+            'selectedCharacter': char_key,
+            'strategyGoal': mode_key,
+            'age': user['age'],
+            'height': user['height'],
+            'weight': user['weight'],
+            'medicalHistory': data.get('medicalHistory', 'None'),
+            'specialPreferences': data.get('specialPreferences', 'None'),
+            'user_id': user['id'],
+            'completed_workouts_count': completed_count,
+        }
+        routine_payload = generate_custom_routine(profile_data, completed_workouts_count=completed_count)
+
+        conn.commit()
+        conn.close()
+
+        formatted = format_journey_dict(journey_row, is_active=True)
+        return jsonify({
+            "status": "success",
+            "journey": formatted,
+            "workout_data": routine_payload
+        }), 200
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+
+@app.route('/api/journeys/resume', methods=['POST'])
+def resume_journey():
+    try:
+        ensure_database_tables()
+        data = request.get_json(silent=True) or {}
+
+        conn = sqlite3.connect(DATABASE_FILE)
+        conn.execute('PRAGMA foreign_keys = ON')
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        user = resolve_request_user(cursor)
+        if not user:
+            conn.close()
+            return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+        journey_id = data.get('journey_id') or data.get('id')
+        journey_row = None
+
+        if journey_id:
+            try:
+                journey_row = cursor.execute('''
+                    SELECT * FROM training_journeys WHERE id = ? AND user_id = ?
+                ''', (int(journey_id), user['id'])).fetchone()
+            except (ValueError, TypeError):
+                journey_row = None
+
+        if not journey_row:
+            raw_char = data.get('character') or data.get('character_id') or data.get('selectedCharacter')
+            raw_mode = data.get('mode') or data.get('strategy') or data.get('strategyGoal')
+            if raw_char:
+                char_key = normalize_character_id(raw_char)
+                mode_key = normalize_mode_id(raw_mode)
+                raw_uni = data.get('universe') or data.get('selectedUniverse')
+                uni_key = normalize_universe_id(raw_uni, char_key)
+                journey_row, _ = get_or_create_journey(cursor, user['id'], uni_key, char_key, mode_key)
+
+        if not journey_row:
+            conn.close()
+            return jsonify({"status": "error", "message": "Journey not found"}), 404
+
+        char_key = journey_row['character_id']
+        uni_key = journey_row['universe']
+        mode_key = journey_row['mode']
+
+        completed_count = cursor.execute('''
+            SELECT COUNT(*) FROM workout_history
+            WHERE user_id = ? AND character_id = ? AND paradigm = ?
+        ''', (user['id'], char_key, mode_key)).fetchone()[0]
+
+        track_idx = completed_count % 4
+        current_track = f"track_{chr(97 + track_idx)}"
+
+        cursor.execute('''
+            UPDATE training_journeys
+            SET completed_workouts = ?, current_track = ?, last_activity_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (completed_count, current_track, journey_row['id']))
+
+        cursor.execute('''
+            INSERT INTO user_profiles (
+                username, selected_universe, selected_character, training_strategy,
+                age, height_cm, weight_kg, medical_history, special_preferences,
+                total_exp, current_grade
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'None', 'None', ?, ?)
+        ''', (
+            user['username'], uni_key, char_key, mode_key,
+            user['age'], user['height'], user['weight'],
+            user['total_exp'], user['current_grade']
+        ))
+
+        profile_data = {
+            'selectedUniverse': uni_key,
+            'selectedCharacter': char_key,
+            'strategyGoal': mode_key,
+            'age': user['age'],
+            'height': user['height'],
+            'weight': user['weight'],
+            'medicalHistory': 'None',
+            'specialPreferences': 'None',
+            'user_id': user['id'],
+            'completed_workouts_count': completed_count,
+        }
+        routine_payload = generate_custom_routine(profile_data, completed_workouts_count=completed_count)
+
+        conn.commit()
+        journey_row = cursor.execute('SELECT * FROM training_journeys WHERE id = ?', (journey_row['id'],)).fetchone()
+        conn.close()
+
+        formatted = format_journey_dict(journey_row, is_active=True)
+        return jsonify({
+            "status": "success",
+            "journey": formatted,
+            "workout_data": routine_payload
+        }), 200
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
 
 @app.route('/api/dev/reset-today', methods=['POST'])
 def dev_reset_today():

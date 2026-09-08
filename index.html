@@ -278,6 +278,26 @@
           </p>
         </div>
 
+        <!-- TRAINING JOURNEYS: CONTINUE YOUR JOURNEY -->
+        <section id="training-journeys-section" class="training-journeys-section">
+          <div class="journeys-header">
+            <h3 class="journeys-section-title">CONTINUE YOUR JOURNEY</h3>
+            <span class="journeys-section-subtitle">Persistent progression across your warrior arcs</span>
+          </div>
+
+          <!-- Active / Saved Journeys Grid -->
+          <div id="journeys-grid" class="journeys-grid">
+            <!-- Journey cards dynamically injected here -->
+          </div>
+
+          <!-- Empty State (shown when user has 0 journeys) -->
+          <div id="journeys-empty-state" class="journeys-empty-state hidden">
+            <p class="journeys-empty-kicker">NO ACTIVE TRAINING JOURNEYS YET</p>
+            <p class="journeys-empty-desc">Choose a character and begin your first arc.</p>
+            <button type="button" class="btn btn-primary journeys-empty-btn" onclick="navigateView('universe-view')">CHOOSE YOUR UNIVERSE</button>
+          </div>
+        </section>
+
         <div class="summary-box" id="summary-box">
           <div class="summary-item">
             <span class="summary-label">Selected Target</span>

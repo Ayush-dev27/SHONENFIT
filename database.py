@@ -77,11 +77,27 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
     ''') 
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS training_journeys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            universe TEXT NOT NULL,
+            character_id TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            completed_workouts INTEGER DEFAULT 0,
+            current_track TEXT DEFAULT 'track_a',
+            last_activity_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(user_id, universe, character_id, mode)
+        );
+    ''')
     
     # Commit changes and close the connection
     conn.commit()
     conn.close()
-    print("🔥 SHONENFIT Database successfully initialized with user_profiles table!")
+    print("🔥 SHONENFIT Database successfully initialized with user_profiles and training_journeys tables!")
 
 if __name__ == '__main__':
     init_db() 
