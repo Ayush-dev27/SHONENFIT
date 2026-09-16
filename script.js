@@ -956,7 +956,7 @@ function handleAuthSuccess(result = {}, submittedPayload = {}, mode = 'login') {
       weight: submittedPayload.weight || profileData.weight || null,
       medicalHistory: profileData.medical_history || null,
       preferences: profileData.special_preferences || null,
-      totalExp: Number(profileData.total_exp ?? profileData.totalExp ?? profileData.new_exp ?? 0),
+      totalExp: Number(result?.total_exp ?? profileData.total_exp ?? profileData.totalExp ?? profileData.new_exp ?? 0),
       completedWorkoutsCount: appState.completedWorkoutsCount,
     };
   }
@@ -1328,7 +1328,7 @@ async function submitMetricsProfile() {
       weight: payload.weight,
       medicalHistory: payload.medicalHistory,
       preferences: payload.specialPreferences,
-      totalExp: Number(result.profile?.total_exp ?? result.total_exp ?? 0),
+      totalExp: Number(result.total_exp ?? result.profile?.total_exp ?? appState.userMetrics.totalExp ?? 0),
       completedWorkoutsCount: appState.completedWorkoutsCount,
     };
     appState.selectedDirection = payload.strategyGoal;
@@ -1340,7 +1340,7 @@ async function submitMetricsProfile() {
       return;
     }
 
-    previousGrade = result.current_grade || result.initial_grade || previousGrade;
+    previousGrade = result.current_grade || result.profile?.current_grade || result.initial_grade || previousGrade;
     applyRankBadgeState(previousGrade);
     renderDashboardStreak(result);
     persistActiveProfile(result.profile || payload, workoutData);

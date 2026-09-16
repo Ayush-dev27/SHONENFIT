@@ -3,7 +3,7 @@ from flask_cors import CORS
 import sqlite3
 import hashlib
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from database import log_workout_session
 from progression import calculate_fatigue_status 
 # Import both core engines you built
@@ -161,9 +161,38 @@ def normalize_mode_id(raw_mode: str) -> str:
     clean = str(raw_mode or 'train-like').lower().replace('_', '-').strip()
     return 'physique' if 'physique' in clean else 'train-like'
 
-def ensure_database_tables():
-    conn = sqlite3.connect(DATABASE_FILE)
+def calculate_grade_from_exp(total_exp: int):
+    """
+    Authoritative grade and threshold calculation matching frontend thresholds:
+    - Special Grade: 10,000+ EXP
+    - Grade 1: 5,000 - 9,999 EXP
+    - Grade 2: 2,500 - 4,999 EXP
+    - Grade 3: 1,000 - 2,499 EXP
+    - Grade 4: 0 - 999 EXP
+    """
+    exp = max(0, int(total_exp or 0))
+    if exp >= 10000:
+        return "Special Grade", 0
+    elif exp >= 5000:
+        return "Grade 1", 10000 - exp
+    elif exp >= 2500:
+        return "Grade 2", 5000 - exp
+    elif exp >= 1000:
+        return "Grade 3", 2500 - exp
+    else:
+        return "Grade 4", 1000 - exp
+
+def get_db_connection(timeout=30.0):
+    conn = sqlite3.connect(DATABASE_FILE, timeout=timeout)
     conn.execute('PRAGMA foreign_keys = ON')
+    return conn
+
+def ensure_database_tables():
+    conn = get_db_connection(timeout=30.0)
+    try:
+        conn.execute('PRAGMA journal_mode=WAL')
+    except Exception:
+        pass
     cursor = conn.cursor()
 
     cursor.execute('''
@@ -349,6 +378,33 @@ def ensure_database_tables():
     except Exception as e:
         pass
 
+    # Safe idempotent progression consistency repair:
+    # If a user's total_exp in users table is less than SUM(exp_earned) from verified workout_history,
+    # safely repair users.total_exp and users.current_grade to reflect genuine successful history.
+    try:
+        user_sums = cursor.execute('''
+            SELECT u.id, u.username, u.total_exp, COALESCE(SUM(w.exp_earned), 0) as hist_exp
+            FROM users u
+            JOIN workout_history w ON u.id = w.user_id
+            GROUP BY u.id
+        ''').fetchall()
+        for u_row in user_sums:
+            u_id, u_name, current_exp, hist_exp = u_row[0], u_row[1], int(u_row[2] or 0), int(u_row[3] or 0)
+            if hist_exp > current_exp:
+                correct_grade, _ = calculate_grade_from_exp(hist_exp)
+                cursor.execute('''
+                    UPDATE users
+                    SET total_exp = ?, current_grade = ?
+                    WHERE id = ?
+                ''', (hist_exp, correct_grade, u_id))
+                cursor.execute('''
+                    UPDATE user_profiles
+                    SET total_exp = ?, current_grade = ?
+                    WHERE id = (SELECT id FROM user_profiles WHERE username = ? ORDER BY id DESC LIMIT 1)
+                ''', (hist_exp, correct_grade, u_name))
+    except Exception as e:
+        pass
+
     conn.commit()
     conn.close()
 
@@ -478,47 +534,48 @@ def get_or_create_journey(cursor, user_id, universe, character_id, mode):
 
     return journey_dict, completed_count
 
-def upsert_user_account(cursor, username, age, weight, height, current_grade='Grade 4', total_exp=0, password_hash=None):
+def upsert_user_account(cursor, username, age, weight, height, current_grade=None, total_exp=None, password_hash=None):
     safe_password_hash = password_hash or 'local-dev-auth-pending'
-    cursor.execute('''
-        INSERT OR IGNORE INTO users (
-            username, password_hash, age, weight, height, current_grade, total_exp
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (
-        username,
-        safe_password_hash,
-        age,
-        weight,
-        height,
-        current_grade,
-        total_exp
-    ))
-    cursor.execute('''
-        UPDATE users
-        SET age = ?,
-            weight = ?,
-            height = ?,
-            current_grade = ?,
-            total_exp = ?
-        WHERE username = ?
-    ''', (
-        age,
-        weight,
-        height,
-        current_grade,
-        total_exp,
-        username
-    ))
-    return cursor.execute(
-        'SELECT id FROM users WHERE username = ?',
+    existing = cursor.execute(
+        'SELECT id, current_grade, total_exp FROM users WHERE username = ?',
         (username,)
-    ).fetchone()[0]
+    ).fetchone()
+
+    if existing:
+        user_id = existing[0]
+        if total_exp is not None and current_grade is not None:
+            cursor.execute('''
+                UPDATE users
+                SET age = ?, weight = ?, height = ?, current_grade = ?, total_exp = ?
+                WHERE id = ?
+            ''', (age, weight, height, current_grade, total_exp, user_id))
+        else:
+            cursor.execute('''
+                UPDATE users
+                SET age = ?, weight = ?, height = ?
+                WHERE id = ?
+            ''', (age, weight, height, user_id))
+        return user_id
+    else:
+        init_grade = current_grade or 'Grade 4'
+        init_exp = total_exp if total_exp is not None else 0
+        cursor.execute('''
+            INSERT INTO users (
+                username, password_hash, age, weight, height, current_grade, total_exp
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            username,
+            safe_password_hash,
+            age,
+            weight,
+            height,
+            init_grade,
+            init_exp
+        ))
+        return cursor.lastrowid
 
 def calculate_streak(user_id=1):
-    ensure_database_tables()
-
-    conn = sqlite3.connect(DATABASE_FILE)
-    conn.execute('PRAGMA foreign_keys = ON')
+    conn = get_db_connection()
     cursor = conn.cursor()
     rows = cursor.execute('''
         SELECT DISTINCT DATE(timestamp) AS training_date
@@ -540,20 +597,28 @@ def calculate_streak(user_id=1):
     if not training_dates:
         return 0
 
-    today = datetime.now().date()
+    today_local = datetime.now().date()
+    today_utc = datetime.now(timezone.utc).date()
     most_recent = training_dates[0]
 
-    if (today - most_recent).days > 2:
+    # Check whether the most recent workout is from today or yesterday.
+    # If the most recent workout was before yesterday (gap >= 2 days), the streak is broken (0).
+    diff_days = min((today_local - most_recent).days, (today_utc - most_recent).days)
+    if diff_days > 1:
         return 0
 
     streak_count = 1
-    previous_date = most_recent
+    expected_previous_day = most_recent - timedelta(days=1)
 
     for training_date in training_dates[1:]:
-        if (previous_date - training_date).days <= 2:
+        if training_date == expected_previous_day:
             streak_count += 1
-            previous_date = training_date
+            expected_previous_day -= timedelta(days=1)
+        elif training_date > expected_previous_day:
+            # Same calendar day (already filtered by DISTINCT, but defensive)
+            continue
         else:
+            # A missing calendar day breaks the consecutive streak immediately
             break
 
     return streak_count
@@ -685,8 +750,7 @@ def create_profile():
         if not user_id:
             return jsonify({"status": "error", "message": "Unauthorized"}), 401
 
-        ensure_database_tables()
-        conn = sqlite3.connect(DATABASE_FILE)
+        conn = get_db_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
@@ -712,6 +776,7 @@ def create_profile():
             ''', (user_id, norm_c, norm_m)).fetchone()[0]
 
             journey_row, _ = get_or_create_journey(cursor, user_id, norm_u, norm_c, norm_m)
+            conn.commit()
             conn.close()
 
             profile_data = {
@@ -764,19 +829,9 @@ def create_profile():
 
         ensure_database_tables()
 
-        conn = sqlite3.connect(DATABASE_FILE)
-        conn.execute('PRAGMA foreign_keys = ON')
+        conn = get_db_connection()
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-
-        cursor.execute('''
-            INSERT INTO user_profiles (
-                username, selected_universe, selected_character, training_strategy,
-                age, height_cm, weight_kg, medical_history, special_preferences
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            username, selected_universe, selected_character, training_strategy,
-            age, height, weight, medical_history, special_preferences
-        ))
 
         user_account_id = upsert_user_account(
             cursor,
@@ -784,10 +839,27 @@ def create_profile():
             age=age,
             weight=weight,
             height=height,
-            current_grade='Grade 4',
-            total_exp=0,
             password_hash=data.get('password_hash') or data.get('passwordHash')
         )
+
+        user_acc = cursor.execute(
+            'SELECT current_grade, total_exp FROM users WHERE id = ?',
+            (user_account_id,)
+        ).fetchone()
+        user_current_grade = user_acc['current_grade'] if user_acc else 'Grade 4'
+        user_total_exp = int(user_acc['total_exp'] or 0) if user_acc else 0
+
+        cursor.execute('''
+            INSERT INTO user_profiles (
+                username, selected_universe, selected_character, training_strategy,
+                age, height_cm, weight_kg, medical_history, special_preferences,
+                current_grade, total_exp
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            username, selected_universe, selected_character, training_strategy,
+            age, height, weight, medical_history, special_preferences,
+            user_current_grade, user_total_exp
+        ))
 
         completed_workouts_count = cursor.execute(
             'SELECT COUNT(*) FROM workout_history WHERE user_id = ?',
@@ -818,7 +890,9 @@ def create_profile():
         return jsonify({
             "status": "success",
             "message": "Profile synced to database and custom pipeline initialized!",
-            "initial_grade": "Grade 4",
+            "initial_grade": user_current_grade,
+            "current_grade": user_current_grade,
+            "total_exp": user_total_exp,
             "current_streak": calculate_streak(user_account_id),
             "completed_workouts_count": completed_workouts_count,
             "journey_completed_count": journey_workouts_count,
@@ -1069,11 +1143,7 @@ def complete_workout():
 
         # Unlocked: Award EXP and persist completed session
         total_exp = current_total_exp + exp_earned
-        grade_number = max(1, 4 - (total_exp // 1000))
-        current_grade = f"Grade {grade_number}"
-        xp_to_next_level = 1000 - (total_exp % 1000)
-        if xp_to_next_level == 1000:
-            xp_to_next_level = 0 if grade_number == 1 else 1000
+        current_grade, xp_to_next_level = calculate_grade_from_exp(total_exp)
 
         if user:
             cursor.execute('''
