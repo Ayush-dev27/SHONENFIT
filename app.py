@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, session, send_from_directory 
 from flask_cors import CORS
+from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import hashlib
 import os
@@ -300,6 +301,19 @@ def ensure_database_tables():
         )
     ''')
 
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS idempotency_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            idempotency_key TEXT UNIQUE NOT NULL,
+            user_id INTEGER NOT NULL,
+            endpoint TEXT NOT NULL,
+            response_body TEXT NOT NULL,
+            status_code INTEGER NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    ''')
+
     # Safe idempotent migration and deduplication for training_journeys
     try:
         all_journeys = cursor.execute('''
@@ -409,11 +423,16 @@ def ensure_database_tables():
     conn.close()
 
 def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+    return generate_password_hash(password)
 
 
 def verify_password(password: str, password_hash: str) -> bool:
-    return hash_password(password) == password_hash
+    if not password_hash or not password:
+        return False
+    if password_hash.startswith('pbkdf2:') or password_hash.startswith('scrypt:'):
+        return check_password_hash(password_hash, password)
+    # Legacy unsalted SHA-256 fallback for existing accounts
+    return hashlib.sha256(password.encode('utf-8')).hexdigest() == password_hash
 
 
 ensure_database_tables()
@@ -432,6 +451,10 @@ def serve_static(path):
 
 
 def resolve_request_user(cursor):
+    """
+    Authoritatively resolves the currently authenticated user strictly from the session.
+    Never trusts client-provided user_id or username parameters as identity.
+    """
     session_user_id = session.get('user_id')
     if session_user_id:
         try:
@@ -444,25 +467,6 @@ def resolve_request_user(cursor):
     session_username = session.get('username')
     if session_username:
         acc = cursor.execute('SELECT * FROM users WHERE username = ?', (str(session_username),)).fetchone()
-        if acc:
-            return acc
-
-    data = request.get_json(silent=True) or {}
-    param_uid = request.args.get('user_id') or data.get('user_id') or data.get('userId')
-    if param_uid:
-        try:
-            acc = cursor.execute('SELECT * FROM users WHERE id = ?', (int(param_uid),)).fetchone()
-            if acc:
-                return acc
-        except (ValueError, TypeError):
-            pass
-        acc = cursor.execute('SELECT * FROM users WHERE username = ?', (str(param_uid),)).fetchone()
-        if acc:
-            return acc
-
-    param_uname = request.args.get('username') or data.get('username')
-    if param_uname:
-        acc = cursor.execute('SELECT * FROM users WHERE username = ?', (str(param_uname),)).fetchone()
         if acc:
             return acc
 
@@ -702,8 +706,7 @@ def login():
 
         ensure_database_tables()
 
-        conn = sqlite3.connect(DATABASE_FILE)
-        conn.execute('PRAGMA foreign_keys = ON')
+        conn = get_db_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
@@ -712,10 +715,20 @@ def login():
             (username,)
         ).fetchone()
 
-        conn.close()
-
         if not user or not verify_password(password, user['password_hash']):
+            conn.close()
             return jsonify({"status": "error", "message": "Invalid username or password."}), 401
+
+        # Transparent password upgrade for legacy SHA-256 hashes
+        if not (user['password_hash'].startswith('pbkdf2:') or user['password_hash'].startswith('scrypt:')):
+            try:
+                new_hash = hash_password(password)
+                cursor.execute('UPDATE users SET password_hash = ? WHERE id = ?', (new_hash, user['id']))
+                conn.commit()
+            except Exception:
+                pass
+
+        conn.close()
 
         session['user_id'] = user['id']
         session['username'] = user['username']
@@ -817,7 +830,24 @@ def create_profile():
     try:
         data = request.get_json(silent=True) or {}
 
-        username = data.get('username') or session.get('username') or 'Recruit'
+        session_username = session.get('username')
+        session_user_id = session.get('user_id')
+
+        requested_username = (data.get('username') or '').strip()
+
+        # If already authenticated, the session identity is authoritative
+        if session_username:
+            if requested_username and requested_username != session_username:
+                return jsonify({
+                    "status": "error",
+                    "message": "Forbidden: Cannot modify another user's profile."
+                }), 403
+            username = session_username
+        elif requested_username:
+            username = requested_username
+        else:
+            username = 'Recruit'
+
         selected_universe = data.get('selectedUniverse')
         selected_character = data.get('selectedCharacter')
         training_strategy = data.get('strategyGoal')
@@ -841,6 +871,13 @@ def create_profile():
             height=height,
             password_hash=data.get('password_hash') or data.get('passwordHash')
         )
+
+        if session_user_id and user_account_id != session_user_id:
+            conn.close()
+            return jsonify({
+                "status": "error",
+                "message": "Forbidden: Cannot modify another user's profile."
+            }), 403
 
         user_acc = cursor.execute(
             'SELECT current_grade, total_exp FROM users WHERE id = ?',
@@ -912,18 +949,23 @@ def log_workout():
     logs granular set histories, and appends a dynamic fatigue status score.
     """
     try:
+        ensure_database_tables()
+        conn = get_db_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        auth_user = resolve_request_user(cursor)
+        if not auth_user:
+            conn.close()
+            return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
         data = request.get_json() or {}
-        username = data.get('username', 'Recruit')
         incoming_sets = data.get('sets', []) # Captured from the checked frontend items
         
         # 1. Fetch current user metrics from shonenfit.db
-        conn = sqlite3.connect(DATABASE_FILE)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
         cursor.execute(
             'SELECT * FROM user_profiles WHERE username = ? ORDER BY id DESC LIMIT 1',
-            (username,)
+            (auth_user['username'],)
         )
         user = cursor.fetchone()
         
@@ -992,11 +1034,12 @@ def log_workout():
 @app.route('/api/complete-workout', methods=['POST'])
 @app.route('/api/workout-complete', methods=['POST'])
 def complete_workout():
+    conn = None
     try:
         data = request.get_json(silent=True) or {}
         character_id = data.get('character') or data.get('character_id') or data.get('selected_character') or 'toji'
         track_param = data.get('track') or data.get('daily_track') or 'track_a'
-        user_id_param = data.get('user_id') or data.get('userId') or session.get('user_id')
+        user_id_param = data.get('user_id') or data.get('userId')
         exp_earned = int(data.get('exp_earned') or data.get('exp') or data.get('exp_gained') or 250)
 
         # Enforce set completion requirements
@@ -1023,82 +1066,48 @@ def complete_workout():
 
         ensure_database_tables()
 
-        conn = sqlite3.connect(DATABASE_FILE)
-        conn.execute('PRAGMA foreign_keys = ON')
+        conn = get_db_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        # Resolve user account and profile with priority on active session
-        user = None
-        user_account = None
+        # 1. Authoritative session authentication
+        auth_user = resolve_request_user(cursor)
+        if not auth_user:
+            conn.close()
+            return jsonify({"success": False, "status": "error", "message": "Unauthorized"}), 401
 
-        session_user_id = session.get('user_id')
-        session_username = session.get('username')
+        # 2. Prevent user identity spoofing
+        if user_id_param and str(user_id_param).isdigit() and int(user_id_param) != auth_user['id']:
+            conn.close()
+            return jsonify({"success": False, "status": "error", "message": "Forbidden: Cannot log workouts for another user"}), 403
 
-        if session_user_id:
-            try:
-                user_account = cursor.execute('SELECT * FROM users WHERE id = ?', (int(session_user_id),)).fetchone()
-            except (ValueError, TypeError):
-                user_account = None
+        user_account_id = auth_user['id']
+        username = auth_user['username']
 
-        if not user_account and session_username:
-            user_account = cursor.execute('SELECT * FROM users WHERE username = ?', (str(session_username),)).fetchone()
+        # 3. Check idempotency key for request deduplication
+        idempotency_key = request.headers.get('X-Idempotency-Key') or data.get('idempotency_key')
+        if idempotency_key:
+            cached = cursor.execute(
+                'SELECT response_body, status_code FROM idempotency_keys WHERE idempotency_key = ? AND user_id = ?',
+                (str(idempotency_key), user_account_id)
+            ).fetchone()
+            if cached:
+                conn.close()
+                import json
+                return jsonify(json.loads(cached['response_body'])), cached['status_code']
 
-        if not user_account and user_id_param:
-            try:
-                user_account = cursor.execute('SELECT * FROM users WHERE id = ?', (int(user_id_param),)).fetchone()
-            except (ValueError, TypeError):
-                user_account = None
+        # 4. Acquire immediate write lock for atomic execution
+        conn.isolation_level = None
+        conn.execute('BEGIN IMMEDIATE')
 
-            if not user_account:
-                user_account = cursor.execute('SELECT * FROM users WHERE username = ?', (str(user_id_param),)).fetchone()
+        user_account = cursor.execute('SELECT * FROM users WHERE id = ?', (user_account_id,)).fetchone()
+        user = cursor.execute('SELECT * FROM user_profiles WHERE username = ? ORDER BY id DESC LIMIT 1', (username,)).fetchone()
 
-        # Resolve username
-        target_username = (
-            user_account['username'] if user_account
-            else (session_username if session_username
-            else (str(user_id_param) if user_id_param and not str(user_id_param).isdigit()
-            else None))
-        )
-
-        if target_username:
-            user = cursor.execute('SELECT * FROM user_profiles WHERE username = ? ORDER BY id DESC LIMIT 1', (target_username,)).fetchone()
-        else:
-            user = cursor.execute('SELECT * FROM user_profiles ORDER BY id DESC LIMIT 1').fetchone()
-            if user:
-                target_username = user['username']
-            else:
-                target_username = 'Recruit'
-
-        username = target_username
-        age = user['age'] if user else (user_account['age'] if user_account else 25)
-        weight = user['weight_kg'] if user else (user_account['weight'] if user_account else 70.0)
-        height = user['height_cm'] if user else (user_account['height'] if user_account else 175.0)
-        current_grade = user_account['current_grade'] if user_account else (user['current_grade'] if user else 'Grade 4')
-        current_total_exp = int(user_account['total_exp'] or 0) if user_account else int(user['total_exp'] or 0 if user else 0)
-
-        user_account_id = upsert_user_account(
-            cursor,
-            username=username,
-            age=age,
-            weight=weight,
-            height=height,
-            current_grade=current_grade,
-            total_exp=current_total_exp
-        )
-
-        if not user:
-            # Create a profile specifically for this user
-            cursor.execute('''
-                INSERT INTO user_profiles (
-                    username, selected_universe, selected_character, training_strategy,
-                    age, height_cm, weight_kg, medical_history, special_preferences, total_exp, current_grade
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                username, 'jjk', character_id, paradigm,
-                age, height, weight, 'None', 'None', current_total_exp, current_grade
-            ))
-            user = cursor.execute('SELECT * FROM user_profiles WHERE id = ?', (cursor.lastrowid,)).fetchone()
+        age = user['age'] if user else (user_account['age'] or 25)
+        weight = user['weight_kg'] if user else (user_account['weight'] or 70.0)
+        height = user['height_cm'] if user else (user_account['height'] or 175.0)
+        current_grade = user_account['current_grade'] or (user['current_grade'] if user else 'Grade 4')
+        current_total_exp = int(user_account['total_exp'] or 0)
 
         # ------------------------------------------------------------------
         # CRITICAL: 24-HOUR WORKOUT RESTRICTION ENFORCEMENT
@@ -1114,7 +1123,7 @@ def complete_workout():
         last_hours_elapsed = None
         if latest_history and latest_history['hours_elapsed'] is not None:
             last_hours_elapsed = float(latest_history['hours_elapsed'])
-        elif user and user['last_workout_logged_at'] and user['username'] == username:
+        elif user and user['last_workout_logged_at']:
             try:
                 raw_time = str(user['last_workout_logged_at']).replace('Z', '+00:00')
                 last_time = datetime.fromisoformat(raw_time)
@@ -1126,6 +1135,7 @@ def complete_workout():
                 last_hours_elapsed = None
 
         if last_hours_elapsed is not None and last_hours_elapsed < 24.0:
+            conn.execute('ROLLBACK')
             conn.close()
             remaining_hours = max(0.0, 24.0 - last_hours_elapsed)
             hours = int(remaining_hours)
@@ -1141,7 +1151,7 @@ def complete_workout():
                 "exp": 0
             }), 200
 
-        # Unlocked: Award EXP and persist completed session
+        # Unlocked: Award EXP and persist completed session atomically
         total_exp = current_total_exp + exp_earned
         current_grade, xp_to_next_level = calculate_grade_from_exp(total_exp)
 
@@ -1239,12 +1249,9 @@ def complete_workout():
         next_workout_data = generate_custom_routine(profile_data, completed_workouts_count=journey_workouts_count)
         new_track = next_workout_data.get('daily_track', 'track_a')
 
-        conn.commit()
-        conn.close()
-
         current_streak = calculate_streak(user_account_id)
 
-        return jsonify({
+        response_payload = {
             "success": True,
             "status": "success",
             "new_track": new_track,
@@ -1261,10 +1268,30 @@ def complete_workout():
             "completed_workouts_count": completed_workouts_count,
             "journey_completed_count": journey_workouts_count,
             "journey": format_journey_dict(journey_dict, is_active=True),
-            "workout_data": next_workout_data
-        }), 200
+            "workout_data": next_workout_data,
+            "message": f"Workout completed! Claimed +{exp_earned} EXP."
+        }
+
+        if idempotency_key:
+            import json
+            cursor.execute('''
+                INSERT OR REPLACE INTO idempotency_keys (
+                    idempotency_key, user_id, endpoint, response_body, status_code
+                ) VALUES (?, ?, ?, ?, ?)
+            ''', (str(idempotency_key), user_account_id, '/api/complete-workout', json.dumps(response_payload), 200))
+
+        conn.execute('COMMIT')
+        conn.close()
+
+        return jsonify(response_payload), 200
 
     except Exception as e:
+        if conn:
+            try:
+                conn.execute('ROLLBACK')
+                conn.close()
+            except Exception:
+                pass
         return jsonify({"success": False, "status": "error", "message": str(e)}), 400
 
 
@@ -1273,47 +1300,32 @@ def get_workout_history():
     try:
         ensure_database_tables()
 
-        conn = sqlite3.connect(DATABASE_FILE)
-        conn.execute('PRAGMA foreign_keys = ON')
+        conn = get_db_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        session_user_id = session.get('user_id')
-        session_username = session.get('username')
-        username = request.args.get('username')
-
-        if session_user_id:
-            user_account = cursor.execute(
-                'SELECT id FROM users WHERE id = ?',
-                (session_user_id,)
-            ).fetchone()
-        elif username or session_username:
-            target_name = username or session_username
-            user_account = cursor.execute(
-                'SELECT id FROM users WHERE username = ?',
-                (target_name,)
-            ).fetchone()
-        else:
-            latest_profile = cursor.execute(
-                'SELECT username FROM user_profiles ORDER BY id DESC LIMIT 1'
-            ).fetchone()
-            user_account = cursor.execute(
-                'SELECT id FROM users WHERE username = ?',
-                (latest_profile['username'],)
-            ).fetchone() if latest_profile else cursor.execute(
-                'SELECT id FROM users ORDER BY id DESC LIMIT 1'
-            ).fetchone()
-
-        if not user_account:
+        auth_user = resolve_request_user(cursor)
+        if not auth_user:
             conn.close()
-            return jsonify([]), 200
+            return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+        # Check for user spoofing via query parameters
+        param_uid = request.args.get('user_id')
+        if param_uid and str(param_uid) != str(auth_user['id']):
+            conn.close()
+            return jsonify({"status": "error", "message": "Forbidden: Cannot access another user's workout history"}), 403
+
+        param_uname = request.args.get('username')
+        if param_uname and str(param_uname) != str(auth_user['username']):
+            conn.close()
+            return jsonify({"status": "error", "message": "Forbidden: Cannot access another user's workout history"}), 403
 
         rows = cursor.execute('''
             SELECT id, user_id, character_id, paradigm, sets_completed, exp_earned, timestamp
             FROM workout_history
             WHERE user_id = ?
             ORDER BY timestamp DESC
-        ''', (user_account['id'],)).fetchall()
+        ''', (auth_user['id'],)).fetchall()
 
         history = []
         for row in rows:
@@ -1347,8 +1359,7 @@ def get_workout_history():
 def get_user_journeys():
     try:
         ensure_database_tables()
-        conn = sqlite3.connect(DATABASE_FILE)
-        conn.execute('PRAGMA foreign_keys = ON')
+        conn = get_db_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
@@ -1356,6 +1367,17 @@ def get_user_journeys():
         if not user:
             conn.close()
             return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+        # Check for user spoofing via query parameters
+        param_uid = request.args.get('user_id')
+        if param_uid and str(param_uid) != str(user['id']):
+            conn.close()
+            return jsonify({"status": "error", "message": "Forbidden: Cannot access another user's journeys"}), 403
+
+        param_uname = request.args.get('username')
+        if param_uname and str(param_uname) != str(user['username']):
+            conn.close()
+            return jsonify({"status": "error", "message": "Forbidden: Cannot access another user's journeys"}), 403
 
         # Get latest active profile to know current character & mode
         active_profile = cursor.execute(
@@ -1411,8 +1433,7 @@ def start_or_get_journey():
         ensure_database_tables()
         data = request.get_json(silent=True) or {}
 
-        conn = sqlite3.connect(DATABASE_FILE)
-        conn.execute('PRAGMA foreign_keys = ON')
+        conn = get_db_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
@@ -1420,6 +1441,12 @@ def start_or_get_journey():
         if not user:
             conn.close()
             return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+        # Prevent user identity spoofing
+        client_uid = data.get('user_id') or data.get('userId')
+        if client_uid and str(client_uid).isdigit() and int(client_uid) != user['id']:
+            conn.close()
+            return jsonify({"status": "error", "message": "Forbidden: Cannot start journeys for another user"}), 403
 
         raw_char = data.get('character') or data.get('character_id') or data.get('selectedCharacter') or 'toji'
         char_key = normalize_character_id(raw_char)
@@ -1478,8 +1505,7 @@ def resume_journey():
         ensure_database_tables()
         data = request.get_json(silent=True) or {}
 
-        conn = sqlite3.connect(DATABASE_FILE)
-        conn.execute('PRAGMA foreign_keys = ON')
+        conn = get_db_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
@@ -1488,11 +1514,22 @@ def resume_journey():
             conn.close()
             return jsonify({"status": "error", "message": "Unauthorized"}), 401
 
+        # Prevent user identity spoofing
+        client_uid = data.get('user_id') or data.get('userId')
+        if client_uid and str(client_uid).isdigit() and int(client_uid) != user['id']:
+            conn.close()
+            return jsonify({"status": "error", "message": "Forbidden: Cannot access another user's journey"}), 403
+
         journey_id = data.get('journey_id') or data.get('id')
         journey_row = None
 
         if journey_id:
             try:
+                existing_j = cursor.execute('SELECT user_id FROM training_journeys WHERE id = ?', (int(journey_id),)).fetchone()
+                if existing_j and existing_j['user_id'] != user['id']:
+                    conn.close()
+                    return jsonify({"status": "error", "message": "Forbidden: Cannot access another user's journey"}), 403
+
                 journey_row = cursor.execute('''
                     SELECT * FROM training_journeys WHERE id = ? AND user_id = ?
                 ''', (int(journey_id), user['id'])).fetchone()
@@ -1577,28 +1614,31 @@ def dev_reset_today():
     """
     DEVELOPER UTILITY: Bypasses the training cap and ACWR restrictions by 
     purging today's training log entries from the local SQLite database.
+    Scoped strictly to the authenticated user.
     """
-    import sqlite3
-    from datetime import datetime
-    
+    ensure_database_tables()
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    auth_user = resolve_request_user(cursor)
+    if not auth_user:
+        conn.close()
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
     today_str = datetime.now().strftime('%Y-%m-%d')
     
     try:
-        conn = sqlite3.connect(DATABASE_FILE)
-        conn.execute('PRAGMA foreign_keys = ON')
-        cursor = conn.cursor()
-        
-        # 1. Clear entries from the detailed workout metrics log table
+        # 1. Clear entries from the detailed workout metrics log table for this user
         cursor.execute(
-            "DELETE FROM workout_logs WHERE DATE(log_date) = DATE(?)", 
-            (today_str,)
+            "DELETE FROM workout_logs WHERE user_id = ? AND DATE(log_date) = DATE(?)", 
+            (auth_user['id'], today_str)
         )
         
-        # 2. Clear entries from the high-level summary workout history table
-        # If your timestamp column stores full ISO strings, we use the DATE() modifier
+        # 2. Clear entries from the high-level summary workout history table for this user
         cursor.execute(
-            "DELETE FROM workout_history WHERE DATE(timestamp) = DATE(?)", 
-            (today_str,)
+            "DELETE FROM workout_history WHERE user_id = ? AND DATE(timestamp) = DATE(?)", 
+            (auth_user['id'], today_str)
         )
         
         conn.commit()
@@ -1606,10 +1646,11 @@ def dev_reset_today():
         
         return jsonify({
             "status": "success", 
-            "message": f"Time Chamber activated. Purged all log entries for {today_str}."
+            "message": f"Time Chamber activated. Purged today's log entries for {auth_user['username']}."
         }), 200
         
     except Exception as e:
+        conn.close()
         return jsonify({
             "status": "error", 
             "message": f"Dev reset failed: {str(e)}"

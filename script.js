@@ -1640,7 +1640,13 @@ async function fetchWorkoutHistory() {
   }
 
   try {
-    const response = await fetch(API_WORKOUT_HISTORY_ENDPOINT);
+    const response = await fetch(API_WORKOUT_HISTORY_ENDPOINT, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
     const history = await response.json();
 
     if (!response.ok || !Array.isArray(history)) {
@@ -2666,6 +2672,9 @@ async function submitWorkoutCompletion(event) {
   const activeChar = getActiveCharacterId();
   const currentTrack = appState.latestWorkoutData?.daily_track || 'track_a';
   const userId = await getActiveUserId();
+  const idempotencyKey = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+    ? crypto.randomUUID()
+    : ('idmp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9));
 
   const payload = {
     character: activeChar,
@@ -2676,7 +2685,8 @@ async function submitWorkoutCompletion(event) {
     exp_earned: 250,
     sets_completed: effectiveSets,
     sets: completionContext?.sets || [],
-    paradigm: appState.selectedDirection || 'train-like'
+    paradigm: appState.selectedDirection || 'train-like',
+    idempotency_key: idempotencyKey,
   }; 
 
   const completeButton = document.getElementById('complete-workout-btn');
@@ -2692,6 +2702,7 @@ async function submitWorkoutCompletion(event) {
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
+        'X-Idempotency-Key': idempotencyKey,
       },
       body: JSON.stringify(payload),
     });
