@@ -98,43 +98,67 @@ def calculate_fatigue_status(user_id):
     Queries the workout_logs table to evaluate the user's 7-day acute workload 
     against their 28-day chronic baseline, preventing burnout using the ACWR model.
     """
-    import sqlite3
+    import db
     
-    conn = sqlite3.connect('shonenfit.db')
-    cursor = conn.cursor()
-    
+    conn = None
     try:
-        # 1. Fetch total training volume for the Acute phase (Last 7 Days)
-        cursor.execute('''
-            SELECT COALESCE(SUM(reps_completed * weight_kg), 0) 
-            FROM workout_logs 
-            WHERE user_id = ? AND log_date >= date('now', '-7 days')
-        ''', (user_id,))
-        acute_workload = cursor.fetchone()[0]
-        
-        # 2. Fetch total training volume for the Chronic phase (Last 28 Days)
-        cursor.execute('''
-            SELECT COALESCE(SUM(reps_completed * weight_kg), 0) 
-            FROM workout_logs 
-            WHERE user_id = ? AND log_date >= date('now', '-28 days')
-        ''', (user_id,))
-        total_chronic_volume = cursor.fetchone()[0]
-        
+        if db.is_postgres():
+            conn = db.get_pg_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT COALESCE(SUM(reps_completed * weight_kg), 0)
+                FROM public.workout_logs
+                WHERE user_id = %s AND log_date >= CURRENT_DATE - INTERVAL '7 days'
+            ''', (str(user_id),))
+            acute_workload = float(db.extract_scalar(cursor.fetchone(), default=0))
+
+            cursor.execute('''
+                SELECT COALESCE(SUM(reps_completed * weight_kg), 0)
+                FROM public.workout_logs
+                WHERE user_id = %s AND log_date >= CURRENT_DATE - INTERVAL '28 days'
+            ''', (str(user_id),))
+            total_chronic_volume = float(db.extract_scalar(cursor.fetchone(), default=0))
+        else:
+            import sqlite3
+            import os
+            db_file = os.environ.get('SQLITE_DATABASE_FILE', 'shonenfit.db')
+            if not os.path.exists(db_file):
+                return {
+                    "ratio": 1.0,
+                    "status": "OPTIMAL",
+                    "message": "🔥 Baseline established. Body is fully adapted and ready to train."
+                }
+            conn = sqlite3.connect(db_file)
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT COALESCE(SUM(reps_completed * weight_kg), 0)
+                FROM workout_logs
+                WHERE user_id = ? AND log_date >= date('now', '-7 days')
+            ''', (user_id,))
+            acute_workload = float(cursor.fetchone()[0])
+
+            cursor.execute('''
+                SELECT COALESCE(SUM(reps_completed * weight_kg), 0)
+                FROM workout_logs
+                WHERE user_id = ? AND log_date >= date('now', '-28 days')
+            ''', (user_id,))
+            total_chronic_volume = float(cursor.fetchone()[0])
+
         # Calculate weekly average baseline over a 4-week span
         chronic_workload = total_chronic_volume / 4.0
-        
-        # 3. Base Case: If the user has sparse history, keep status baseline optimal
+
+        # Base Case: If the user has sparse history, keep status baseline optimal
         if chronic_workload == 0:
             return {
                 "ratio": 1.0,
                 "status": "OPTIMAL",
                 "message": "🔥 Baseline established. Body is fully adapted and ready to train."
             }
-            
-        # 4. Compute Acute-to-Chronic Ratio
+
+        # Compute Acute-to-Chronic Ratio
         acwr_ratio = round(acute_workload / chronic_workload, 2)
-        
-        # 5. Route threshold conditions to provide actionable training advice
+
+        # Route threshold conditions to provide actionable training advice
         if acwr_ratio < 0.8:
             status = "UNDER_TRAINING"
             message = "💤 Fatigue is low, but volume dropped. Time to scale up intensity to prevent detraining!"
@@ -147,16 +171,20 @@ def calculate_fatigue_status(user_id):
         else: # Ratio climbs greater than 1.5
             status = "DANGER_ZONE"
             message = "🚨 CRITICAL OVER-TRAINING! Workload spike detected. Deload immediately to protect against systemic breakdown."
-            
+
         return {
             "ratio": acwr_ratio,
             "status": status,
             "message": message
         }
-        
+
     except Exception as e:
-        print(f"❌ Error computing fatigue engine metrics: {e}")
+        print(f"[ERROR] Error computing fatigue engine metrics: {e}")
         return {"ratio": 1.0, "status": "OPTIMAL", "message": "Error reading metrics."}
-        
+
     finally:
-        conn.close() 
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass

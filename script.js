@@ -34,6 +34,26 @@ function isSupabaseConfigured() {
   );
 }
 
+async function getAuthHeaders(extraHeaders = {}) {
+  const headers = {
+    'Accept': 'application/json',
+    ...extraHeaders,
+  };
+  const client = getSupabaseClient();
+  if (client && typeof client.auth?.getSession === 'function') {
+    try {
+      const { data } = await client.auth.getSession();
+      const token = data?.session?.access_token;
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    } catch (err) {
+      console.warn('[SHONENFIT] Unable to read supabase auth token:', err);
+    }
+  }
+  return headers;
+}
+
 // ============================================================================
 // STATE MANAGEMENT
 // ============================================================================
@@ -558,9 +578,7 @@ async function checkAuthSessionOnLoad() {
     const response = await fetch(API_PROFILE_ENDPOINT, {
       method: 'GET',
       credentials: 'include',
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers: await getAuthHeaders(),
     });
 
     if (response.status === 401) {
@@ -1150,7 +1168,7 @@ async function logoutAndResetSession() {
     await fetch(API_LOGOUT_ENDPOINT, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Accept': 'application/json' },
+      headers: await getAuthHeaders(),
     });
   } catch (error) {
     console.warn('[SHONENFIT] Logout request could not reach the server; clearing local session state.', error);
@@ -1295,9 +1313,10 @@ async function submitMetricsProfile() {
 
     const response = await fetch(API_PROFILE_ENDPOINT, {
       method: 'POST',
-      headers: {
+      credentials: 'include',
+      headers: await getAuthHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify(payload),
     });
 
@@ -1643,9 +1662,7 @@ async function fetchWorkoutHistory() {
     const response = await fetch(API_WORKOUT_HISTORY_ENDPOINT, {
       method: 'GET',
       credentials: 'include',
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers: await getAuthHeaders(),
     });
     const history = await response.json();
 
@@ -1767,9 +1784,7 @@ async function fetchTrainingJourneys() {
     const response = await fetch(API_JOURNEYS_ENDPOINT, {
       method: 'GET',
       credentials: 'include',
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers: await getAuthHeaders(),
     });
 
     if (!response.ok) {
@@ -1898,10 +1913,9 @@ async function resumeJourney(journeyId) {
     const response = await fetch(API_JOURNEYS_RESUME_ENDPOINT, {
       method: 'POST',
       credentials: 'include',
-      headers: {
+      headers: await getAuthHeaders({
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
+      }),
       body: JSON.stringify({ journey_id: journeyId }),
     });
 
@@ -2700,10 +2714,10 @@ async function submitWorkoutCompletion(event) {
     response = await fetch(API_WORKOUT_COMPLETE_ENDPOINT, {
       method: 'POST',
       credentials: 'include',
-      headers: {
+      headers: await getAuthHeaders({
         'Content-Type': 'application/json',
         'X-Idempotency-Key': idempotencyKey,
-      },
+      }),
       body: JSON.stringify(payload),
     });
   } catch (networkError) {

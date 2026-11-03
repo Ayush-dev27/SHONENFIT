@@ -4,18 +4,67 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import hashlib
 import os
+import re
 from datetime import datetime, timezone, timedelta
 from database import log_workout_session
 from progression import calculate_fatigue_status 
 # Import both core engines you built
 from generator import generate_custom_routine
 from progression import process_workout_log
+import db
+
+def enforce_production_configuration():
+    """
+    Enforces mandatory security configuration in production environments.
+    Production is defined as FLASK_ENV=production or VERCEL=1.
+    Fails closed with a clear RuntimeError if any production secret is missing
+    or set to an insecure default.
+    """
+    env = os.environ.get('FLASK_ENV', 'development').lower()
+    is_production = (env == 'production') or (os.environ.get('VERCEL') == '1')
+
+    if is_production:
+        secret_key = os.environ.get('SECRET_KEY', '').strip()
+        if not secret_key or secret_key == 'shonenfit-dev-secret':
+            raise RuntimeError(
+                "FATAL: SECRET_KEY must be explicitly configured in production environments. "
+                "Using default or development secrets is strictly prohibited."
+            )
+        jwt_secret = os.environ.get('SUPABASE_JWT_SECRET', '').strip()
+        if not jwt_secret or jwt_secret == 'shonenfit-dev-secret':
+            raise RuntimeError(
+                "FATAL: SUPABASE_JWT_SECRET must be explicitly configured in production environments. "
+                "Using default or development secrets is strictly prohibited."
+            )
+
+enforce_production_configuration()
+
+def get_allowed_cors_origins():
+    """
+    Resolves allowed CORS origins.
+    Includes local dev origins, Vercel preview/production domains,
+    and custom domains configured via ALLOWED_ORIGINS.
+    """
+    origins = [
+        "http://127.0.0.1:5000",
+        "http://localhost:5000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3000",
+        re.compile(r"^https:\/\/.*\.vercel\.app$")
+    ]
+    extra = os.environ.get('ALLOWED_ORIGINS', '').strip()
+    if extra:
+        for o in extra.split(','):
+            o = o.strip()
+            if o:
+                origins.append(o)
+    return origins
 
 app = Flask(__name__)
-app.secret_key = 'shonenfit-dev-secret'
-CORS(app, supports_credentials=True)
+app.secret_key = os.environ.get('SECRET_KEY', 'shonenfit-dev-secret')
+CORS(app, origins=get_allowed_cors_origins(), supports_credentials=True)
 
-DATABASE_FILE = 'shonenfit.db'
+DATABASE_FILE = os.environ.get('SQLITE_DATABASE_FILE', 'shonenfit.db')
 
 CHARACTER_DISPLAY_NAMES = {
     'itadori': 'Yuji Itadori',
@@ -184,11 +233,11 @@ def calculate_grade_from_exp(total_exp: int):
         return "Grade 4", 1000 - exp
 
 def get_db_connection(timeout=30.0):
-    conn = sqlite3.connect(DATABASE_FILE, timeout=timeout)
-    conn.execute('PRAGMA foreign_keys = ON')
-    return conn
+    return db.get_db_connection(timeout=timeout)
 
 def ensure_database_tables():
+    if db.is_postgres():
+        return
     conn = get_db_connection(timeout=30.0)
     try:
         conn.execute('PRAGMA journal_mode=WAL')
@@ -452,13 +501,71 @@ def serve_static(path):
 
 def resolve_request_user(cursor):
     """
-    Authoritatively resolves the currently authenticated user strictly from the session.
+    Authoritatively resolves the currently authenticated user.
+    1. First checks Authorization: Bearer <token> (Supabase JWT).
+    2. Checks Flask session for local development fallback.
     Never trusts client-provided user_id or username parameters as identity.
     """
+    # 1. Bearer JWT check
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        token = auth_header[7:].strip()
+        env = os.environ.get('FLASK_ENV', 'development').lower()
+        is_production = (env == 'production') or (os.environ.get('VERCEL') == '1')
+        jwt_secret = os.environ.get('SUPABASE_JWT_SECRET', '').strip()
+        if not jwt_secret:
+            if is_production:
+                raise RuntimeError("FATAL: SUPABASE_JWT_SECRET is missing in production environments.")
+            jwt_secret = 'shonenfit-dev-secret'
+
+        import jwt
+        token_payload = None
+        try:
+            token_payload = jwt.decode(
+                token,
+                jwt_secret,
+                algorithms=['HS256'],
+                audience='authenticated',
+                options={'verify_signature': True, 'verify_exp': True, 'verify_aud': True}
+            )
+        except Exception:
+            token_payload = None
+
+        if token_payload:
+            uid = token_payload.get('sub') or token_payload.get('user_id')
+            if uid:
+                if db.is_postgres():
+                    cursor.execute("SELECT * FROM public.profiles WHERE id = %s", (str(uid),))
+                    acc = cursor.fetchone()
+                    if acc:
+                        return acc
+                else:
+                    uname = token_payload.get('user_metadata', {}).get('username') or token_payload.get('username')
+                    if uname:
+                        acc = cursor.execute("SELECT * FROM users WHERE username = ?", (str(uname),)).fetchone()
+                        if acc:
+                            return acc
+                    if str(uid).isdigit():
+                        acc = cursor.execute("SELECT * FROM users WHERE id = ?", (int(uid),)).fetchone()
+                        if acc:
+                            return acc
+
+                return {
+                    "id": uid,
+                    "username": token_payload.get("email", "Recruit").split("@")[0] if token_payload.get("email") else "Recruit",
+                    "email": token_payload.get("email", ""),
+                    "is_new": True
+                }
+
+    # 2. Local session check
     session_user_id = session.get('user_id')
     if session_user_id:
         try:
-            acc = cursor.execute('SELECT * FROM users WHERE id = ?', (int(session_user_id),)).fetchone()
+            if db.is_postgres():
+                cursor.execute('SELECT * FROM public.profiles WHERE id = %s', (str(session_user_id),))
+                acc = cursor.fetchone()
+            else:
+                acc = cursor.execute('SELECT * FROM users WHERE id = ?', (int(session_user_id),)).fetchone()
             if acc:
                 return acc
         except (ValueError, TypeError):
@@ -466,11 +573,22 @@ def resolve_request_user(cursor):
 
     session_username = session.get('username')
     if session_username:
-        acc = cursor.execute('SELECT * FROM users WHERE username = ?', (str(session_username),)).fetchone()
+        if db.is_postgres():
+            cursor.execute('SELECT * FROM public.profiles WHERE username = %s', (str(session_username),))
+            acc = cursor.fetchone()
+        else:
+            acc = cursor.execute('SELECT * FROM users WHERE username = ?', (str(session_username),)).fetchone()
         if acc:
             return acc
 
     return None
+
+def extract_scalar(row, default=0):
+    if not row:
+        return default
+    if isinstance(row, dict) or hasattr(row, 'keys'):
+        return list(row.values())[0]
+    return row[0]
 
 def format_journey_dict(row, is_active=False):
     char_id = normalize_character_id(row['character_id'])
@@ -494,7 +612,7 @@ def format_journey_dict(row, is_active=False):
         'current_day': completed_workouts + 1,
         'current_track': track_key,
         'current_track_name': track_name,
-        'last_activity_at': row['last_activity_at'],
+        'last_activity_at': str(row['last_activity_at']),
         'image': CHARACTER_IMAGES.get(char_id, 'images/toji.jpg'),
         'is_active': is_active
     }
@@ -504,39 +622,68 @@ def get_or_create_journey(cursor, user_id, universe, character_id, mode):
     uni_key = normalize_universe_id(universe, char_key)
     mode_key = normalize_mode_id(mode)
 
-    completed_count = cursor.execute('''
-        SELECT COUNT(*) FROM workout_history 
-        WHERE user_id = ? AND character_id = ? AND paradigm = ?
-    ''', (user_id, char_key, mode_key)).fetchone()[0]
+    if db.is_postgres():
+        cursor.execute('''
+            SELECT COUNT(*) FROM public.workout_history
+            WHERE user_id = %s AND character_id = %s AND paradigm = %s
+        ''', (str(user_id), char_key, mode_key))
+        completed_count = extract_scalar(cursor.fetchone())
 
-    track_idx = completed_count % 4
-    current_track = f"track_{chr(97 + track_idx)}"
+        track_idx = completed_count % 4
+        current_track = f"track_{chr(97 + track_idx)}"
 
-    cursor.execute('''
-        INSERT INTO training_journeys (
-            user_id, universe, character_id, mode, completed_workouts, current_track, last_activity_at
-        ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(user_id, universe, character_id, mode) DO UPDATE SET
-            completed_workouts = excluded.completed_workouts,
-            current_track = excluded.current_track,
-            last_activity_at = CURRENT_TIMESTAMP
-    ''', (user_id, uni_key, char_key, mode_key, completed_count, current_track))
+        cursor.execute('''
+            INSERT INTO public.training_journeys (
+                user_id, universe, character_id, mode, completed_workouts, current_track, last_activity_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, NOW())
+            ON CONFLICT(user_id, universe, character_id, mode) DO UPDATE SET
+                completed_workouts = EXCLUDED.completed_workouts,
+                current_track = EXCLUDED.current_track,
+                last_activity_at = NOW()
+        ''', (str(user_id), uni_key, char_key, mode_key, completed_count, current_track))
 
-    journey_row = cursor.execute('''
-        SELECT id, user_id, universe, character_id, mode, completed_workouts, current_track, last_activity_at, created_at
-        FROM training_journeys 
-        WHERE user_id = ? AND universe = ? AND character_id = ? AND mode = ?
-    ''', (user_id, uni_key, char_key, mode_key)).fetchone()
-
-    if isinstance(journey_row, sqlite3.Row):
-        journey_dict = dict(journey_row)
-    elif journey_row:
-        cols = ['id', 'user_id', 'universe', 'character_id', 'mode', 'completed_workouts', 'current_track', 'last_activity_at', 'created_at']
-        journey_dict = dict(zip(cols, journey_row))
+        cursor.execute('''
+            SELECT id, user_id, universe, character_id, mode, completed_workouts, current_track, last_activity_at, created_at
+            FROM public.training_journeys
+            WHERE user_id = %s AND universe = %s AND character_id = %s AND mode = %s
+        ''', (str(user_id), uni_key, char_key, mode_key))
+        journey_row = cursor.fetchone()
+        journey_dict = dict(journey_row) if journey_row else {}
+        return journey_dict, completed_count
     else:
-        journey_dict = {}
+        completed_count = cursor.execute('''
+            SELECT COUNT(*) FROM workout_history
+            WHERE user_id = ? AND character_id = ? AND paradigm = ?
+        ''', (user_id, char_key, mode_key)).fetchone()[0]
 
-    return journey_dict, completed_count
+        track_idx = completed_count % 4
+        current_track = f"track_{chr(97 + track_idx)}"
+
+        cursor.execute('''
+            INSERT INTO training_journeys (
+                user_id, universe, character_id, mode, completed_workouts, current_track, last_activity_at
+            ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id, universe, character_id, mode) DO UPDATE SET
+                completed_workouts = excluded.completed_workouts,
+                current_track = excluded.current_track,
+                last_activity_at = CURRENT_TIMESTAMP
+        ''', (user_id, uni_key, char_key, mode_key, completed_count, current_track))
+
+        journey_row = cursor.execute('''
+            SELECT id, user_id, universe, character_id, mode, completed_workouts, current_track, last_activity_at, created_at
+            FROM training_journeys
+            WHERE user_id = ? AND universe = ? AND character_id = ? AND mode = ?
+        ''', (user_id, uni_key, char_key, mode_key)).fetchone()
+
+        if isinstance(journey_row, sqlite3.Row):
+            journey_dict = dict(journey_row)
+        elif journey_row:
+            cols = ['id', 'user_id', 'universe', 'character_id', 'mode', 'completed_workouts', 'current_track', 'last_activity_at', 'created_at']
+            journey_dict = dict(zip(cols, journey_row))
+        else:
+            journey_dict = {}
+
+        return journey_dict, completed_count
 
 def upsert_user_account(cursor, username, age, weight, height, current_grade=None, total_exp=None, password_hash=None):
     safe_password_hash = password_hash or 'local-dev-auth-pending'
@@ -581,22 +728,40 @@ def upsert_user_account(cursor, username, age, weight, height, current_grade=Non
 def calculate_streak(user_id=1):
     conn = get_db_connection()
     cursor = conn.cursor()
-    rows = cursor.execute('''
-        SELECT DISTINCT DATE(timestamp) AS training_date
-        FROM workout_history
-        WHERE user_id = ?
-        ORDER BY training_date DESC
-    ''', (user_id,)).fetchall()
-    conn.close()
-
-    if not rows:
-        return 0
-
-    training_dates = [
-        datetime.strptime(row[0], '%Y-%m-%d').date()
-        for row in rows
-        if row[0]
-    ]
+    if db.is_postgres():
+        cursor.execute('''
+            SELECT DISTINCT (timestamp AT TIME ZONE 'UTC')::date AS training_date
+            FROM public.workout_history
+            WHERE user_id = %s
+            ORDER BY training_date DESC
+        ''', (str(user_id),))
+        rows = cursor.fetchall()
+        conn.close()
+        if not rows:
+            return 0
+        training_dates = []
+        for r in rows:
+            d = r['training_date'] if isinstance(r, dict) else r[0]
+            if d:
+                if isinstance(d, str):
+                    training_dates.append(datetime.strptime(d, '%Y-%m-%d').date())
+                else:
+                    training_dates.append(d)
+    else:
+        rows = cursor.execute('''
+            SELECT DISTINCT DATE(timestamp) AS training_date
+            FROM workout_history
+            WHERE user_id = ?
+            ORDER BY training_date DESC
+        ''', (user_id,)).fetchall()
+        conn.close()
+        if not rows:
+            return 0
+        training_dates = [
+            datetime.strptime(row[0], '%Y-%m-%d').date()
+            for row in rows
+            if row[0]
+        ]
 
     if not training_dates:
         return 0
@@ -759,14 +924,79 @@ def logout():
 @app.route('/api/profile', methods=['GET', 'POST'])
 def create_profile():
     if request.method == 'GET':
-        user_id = session.get('user_id')
-        if not user_id:
-            return jsonify({"status": "error", "message": "Unauthorized"}), 401
-
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
+        if db.is_sqlite():
+            conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
+        auth_user = resolve_request_user(cursor)
+        if not auth_user:
+            conn.close()
+            return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+        if db.is_postgres():
+            user_id = str(auth_user['id'])
+            user_account = auth_user
+            user_profile = auth_user
+
+            if auth_user.get('is_new'):
+                conn.close()
+                return jsonify({
+                    "status": "success",
+                    "user_id": user_id,
+                    "is_new": True,
+                    "profile": None,
+                    "current_grade": "Grade 4",
+                    "total_exp": 0,
+                    "completed_workouts_count": 0,
+                    "journey_completed_count": 0,
+                    "message": "New recruit detected. Please complete profile onboarding."
+                }), 200
+
+            cursor.execute('SELECT COUNT(*) FROM public.workout_history WHERE user_id = %s', (user_id,))
+            completed_workouts_count = extract_scalar(cursor.fetchone())
+
+            norm_c = normalize_character_id(user_profile.get('selected_character') or 'toji')
+            norm_m = normalize_mode_id(user_profile.get('training_strategy') or 'train-like')
+            norm_u = normalize_universe_id(user_profile.get('selected_universe'), norm_c)
+
+            cursor.execute('''
+                SELECT COUNT(*) FROM public.workout_history
+                WHERE user_id = %s AND character_id = %s AND paradigm = %s
+            ''', (user_id, norm_c, norm_m))
+            journey_workouts_count = extract_scalar(cursor.fetchone())
+
+            journey_row, _ = get_or_create_journey(cursor, user_id, norm_u, norm_c, norm_m)
+            conn.commit()
+            conn.close()
+
+            profile_data = {
+                'selectedUniverse': norm_u,
+                'selectedCharacter': norm_c,
+                'strategyGoal': norm_m,
+                'age': user_profile.get('age') or 25,
+                'height': user_profile.get('height_cm') or 175.0,
+                'weight': user_profile.get('weight_kg') or 70.0,
+                'medicalHistory': user_profile.get('medical_history') or 'None',
+                'specialPreferences': user_profile.get('special_preferences') or 'None',
+                'user_id': user_id,
+                'completed_workouts_count': journey_workouts_count,
+            }
+            routine_payload = generate_custom_routine(profile_data, completed_workouts_count=journey_workouts_count)
+            return jsonify({
+                "status": "success",
+                "user_id": user_id,
+                "profile": dict(user_profile),
+                "journey": format_journey_dict(journey_row, is_active=True),
+                "workout_data": routine_payload,
+                "current_streak": calculate_streak(user_id),
+                "completed_workouts_count": completed_workouts_count,
+                "journey_completed_count": journey_workouts_count,
+                "current_grade": user_account.get('current_grade') or 'Grade 4',
+                "total_exp": user_account.get('total_exp') or 0
+            }), 200
+
+        user_id = auth_user['id']
         user_account = cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
         user_profile = cursor.execute(
             'SELECT * FROM user_profiles WHERE username = ? ORDER BY id DESC LIMIT 1',
@@ -829,6 +1059,117 @@ def create_profile():
 
     try:
         data = request.get_json(silent=True) or {}
+        ensure_database_tables()
+        conn = get_db_connection()
+        if db.is_sqlite():
+            conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        if db.is_postgres():
+            auth_user = resolve_request_user(cursor)
+            if not auth_user:
+                conn.close()
+                return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+            user_id = str(auth_user['id'])
+            if auth_user.get('is_new'):
+                username = (data.get('username') or '').strip() or auth_user.get('username') or 'Recruit'
+            else:
+                username = auth_user.get('username') or (data.get('username') or '').strip() or 'Recruit'
+
+            selected_universe = data.get('selectedUniverse')
+            selected_character = data.get('selectedCharacter')
+            training_strategy = data.get('strategyGoal')
+            age = int(data.get('age', 25))
+            height = float(data.get('height', 175))
+            weight = float(data.get('weight', 70))
+            medical_history = data.get('medicalHistory', '')
+            special_preferences = data.get('specialPreferences', '')
+
+            norm_c = normalize_character_id(selected_character)
+            norm_m = normalize_mode_id(training_strategy)
+            norm_u = normalize_universe_id(selected_universe, norm_c)
+
+            updated_profile = None
+            if not auth_user.get('is_new'):
+                cursor.execute('''
+                    UPDATE public.profiles
+                    SET username = COALESCE(%s, username),
+                        selected_universe = %s,
+                        selected_character = %s,
+                        training_strategy = %s,
+                        age = %s,
+                        height_cm = %s,
+                        weight_kg = %s,
+                        medical_history = %s,
+                        special_preferences = %s,
+                        updated_at = NOW()
+                    WHERE id = %s
+                    RETURNING *;
+                ''', (
+                    username, norm_u, norm_c, norm_m,
+                    age, height, weight, medical_history, special_preferences,
+                    user_id
+                ))
+                updated_profile = cursor.fetchone()
+
+            if not updated_profile:
+                cursor.execute('''
+                    INSERT INTO public.profiles (
+                        id, username, selected_universe, selected_character, training_strategy,
+                        age, height_cm, weight_kg, medical_history, special_preferences,
+                        current_grade, total_exp, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Grade 4', 0, NOW())
+                    ON CONFLICT (id) DO UPDATE SET
+                        username = EXCLUDED.username,
+                        selected_universe = EXCLUDED.selected_universe,
+                        selected_character = EXCLUDED.selected_character,
+                        training_strategy = EXCLUDED.training_strategy,
+                        age = EXCLUDED.age,
+                        height_cm = EXCLUDED.height_cm,
+                        weight_kg = EXCLUDED.weight_kg,
+                        medical_history = EXCLUDED.medical_history,
+                        special_preferences = EXCLUDED.special_preferences,
+                        updated_at = NOW()
+                    RETURNING *;
+                ''', (
+                    user_id, username, norm_u, norm_c, norm_m,
+                    age, height, weight, medical_history, special_preferences
+                ))
+                updated_profile = cursor.fetchone()
+
+            user_current_grade = updated_profile.get('current_grade') or 'Grade 4'
+            user_total_exp = int(updated_profile.get('total_exp') or 0)
+
+            cursor.execute('SELECT COUNT(*) FROM public.workout_history WHERE user_id = %s', (user_id,))
+            completed_workouts_count = extract_scalar(cursor.fetchone())
+
+            journey_row, journey_workouts_count = get_or_create_journey(
+                cursor, user_id, norm_u, norm_c, norm_m
+            )
+
+            conn.commit()
+            conn.close()
+
+            data['user_id'] = user_id
+            data['completed_workouts_count'] = journey_workouts_count
+            data['selectedUniverse'] = norm_u
+            data['selectedCharacter'] = norm_c
+            data['strategyGoal'] = norm_m
+            routine_payload = generate_custom_routine(data, completed_workouts_count=journey_workouts_count)
+
+            return jsonify({
+                "status": "success",
+                "message": "Profile synced to database and custom pipeline initialized!",
+                "initial_grade": user_current_grade,
+                "current_grade": user_current_grade,
+                "total_exp": user_total_exp,
+                "current_streak": calculate_streak(user_id),
+                "completed_workouts_count": completed_workouts_count,
+                "journey_completed_count": journey_workouts_count,
+                "journey": format_journey_dict(journey_row, is_active=True),
+                "workout_data": routine_payload
+            }), 201
 
         session_username = session.get('username')
         session_user_id = session.get('user_id')
@@ -856,12 +1197,6 @@ def create_profile():
         weight = float(data.get('weight', 70))
         medical_history = data.get('medicalHistory', '')
         special_preferences = data.get('specialPreferences', '')
-
-        ensure_database_tables()
-
-        conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
 
         user_account_id = upsert_user_account(
             cursor,
@@ -951,7 +1286,8 @@ def log_workout():
     try:
         ensure_database_tables()
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
+        if db.is_sqlite():
+            conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
         auth_user = resolve_request_user(cursor)
@@ -960,37 +1296,78 @@ def log_workout():
             return jsonify({"status": "error", "message": "Unauthorized"}), 401
 
         data = request.get_json() or {}
-        incoming_sets = data.get('sets', []) # Captured from the checked frontend items
-        
-        # 1. Fetch current user metrics from shonenfit.db
+        incoming_sets = data.get('sets', [])
+
+        if db.is_postgres():
+            user = auth_user
+            current_exp = user.get('total_exp') or 0
+            current_grade = user.get('current_grade') or 'Grade 4'
+            last_logged_str = str(user.get('updated_at') or '')
+            weekly_count = 0
+            current_streak = 0
+
+            calc_result = process_workout_log(
+                current_exp, current_grade, last_logged_str, weekly_count, current_streak
+            )
+
+            if calc_result['status'] == 'locked':
+                conn.close()
+                return jsonify(calc_result), 200
+
+            if incoming_sets:
+                log_workout_session(
+                    user_id=user['id'],
+                    universe=user.get('selected_universe'),
+                    character_name=user.get('selected_character'),
+                    sets_data=incoming_sets
+                )
+
+            fatigue_metrics = calculate_fatigue_status(user['id'])
+            calc_result['fatigue_ratio'] = fatigue_metrics['ratio']
+            calc_result['fatigue_status'] = fatigue_metrics['status']
+            calc_result['fatigue_message'] = fatigue_metrics['message']
+
+            cursor.execute('''
+                UPDATE public.profiles
+                SET total_exp = %s,
+                    current_grade = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+            ''', (
+                calc_result['total_exp'],
+                calc_result['current_grade'],
+                str(user['id'])
+            ))
+
+            conn.commit()
+            conn.close()
+            return jsonify(calc_result), 200
+
+        # SQLite implementation
         cursor.execute(
             'SELECT * FROM user_profiles WHERE username = ? ORDER BY id DESC LIMIT 1',
             (auth_user['username'],)
         )
         user = cursor.fetchone()
-        
+
         if not user:
             conn.close()
             return jsonify({"status": "error", "message": "User profile not found. Complete initialization first."}), 404
-            
-        # 2. Extract state metrics to feed to our math logic module
+
         current_exp = user['total_exp']
         current_grade = user['current_grade']
         last_logged_str = user['last_workout_logged_at']
         weekly_count = user['weekly_workout_count']
         current_streak = user['current_streak_weeks']
-        
-        # 3. Process the core level progression calculations
+
         calc_result = process_workout_log(
             current_exp, current_grade, last_logged_str, weekly_count, current_streak
         )
-        
-        # If the 24-hour time lock catches an anti-cheat event, halt immediately
+
         if calc_result['status'] == 'locked':
             conn.close()
             return jsonify(calc_result), 200
-            
-        # 4. Success Pipeline: Save the granular set records to our new table
+
         if incoming_sets:
             log_workout_session(
                 user_id=user['id'],
@@ -998,16 +1375,12 @@ def log_workout():
                 character_name=user['selected_character'],
                 sets_data=incoming_sets
             )
-            
-        # 5. Compute the real-time Fatigue Engine baseline score
+
         fatigue_metrics = calculate_fatigue_status(user['id'])
-        
-        # Inject the live balance metrics safely into our frontend response payload
         calc_result['fatigue_ratio'] = fatigue_metrics['ratio']
         calc_result['fatigue_status'] = fatigue_metrics['status']
         calc_result['fatigue_message'] = fatigue_metrics['message']
-        
-        # 6. Save the calculated metrics back to the user row in the database
+
         cursor.execute('''
             UPDATE user_profiles
             SET total_exp = ?,
@@ -1022,15 +1395,15 @@ def log_workout():
             calc_result['timestamp_iso'],
             user['id']
         ))
-        
+
         conn.commit()
         conn.close()
-        
+
         return jsonify(calc_result), 200
-        
+
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
-    
+
 @app.route('/api/complete-workout', methods=['POST'])
 @app.route('/api/workout-complete', methods=['POST'])
 def complete_workout():
@@ -1067,7 +1440,8 @@ def complete_workout():
         ensure_database_tables()
 
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
+        if db.is_sqlite():
+            conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
         # 1. Authoritative session authentication
@@ -1077,7 +1451,7 @@ def complete_workout():
             return jsonify({"success": False, "status": "error", "message": "Unauthorized"}), 401
 
         # 2. Prevent user identity spoofing
-        if user_id_param and str(user_id_param).isdigit() and int(user_id_param) != auth_user['id']:
+        if user_id_param and str(user_id_param) != str(auth_user['id']):
             conn.close()
             return jsonify({"success": False, "status": "error", "message": "Forbidden: Cannot log workouts for another user"}), 403
 
@@ -1087,16 +1461,183 @@ def complete_workout():
         # 3. Check idempotency key for request deduplication
         idempotency_key = request.headers.get('X-Idempotency-Key') or data.get('idempotency_key')
         if idempotency_key:
-            cached = cursor.execute(
-                'SELECT response_body, status_code FROM idempotency_keys WHERE idempotency_key = ? AND user_id = ?',
-                (str(idempotency_key), user_account_id)
-            ).fetchone()
+            if db.is_postgres():
+                cursor.execute(
+                    'SELECT response_body, status_code FROM public.idempotency_keys WHERE idempotency_key = %s AND user_id = %s',
+                    (str(idempotency_key), str(user_account_id))
+                )
+                cached = cursor.fetchone()
+            else:
+                cached = cursor.execute(
+                    'SELECT response_body, status_code FROM idempotency_keys WHERE idempotency_key = ? AND user_id = ?',
+                    (str(idempotency_key), user_account_id)
+                ).fetchone()
+
             if cached:
                 conn.close()
                 import json
-                return jsonify(json.loads(cached['response_body'])), cached['status_code']
+                resp_body = cached['response_body'] if isinstance(cached, dict) or hasattr(cached, 'keys') else cached[0]
+                status_code = cached['status_code'] if isinstance(cached, dict) or hasattr(cached, 'keys') else cached[1]
+                if isinstance(resp_body, dict):
+                    return jsonify(resp_body), status_code
+                return jsonify(json.loads(resp_body)), status_code
 
-        # 4. Acquire immediate write lock for atomic execution
+        # PostgreSQL Branch
+        if db.is_postgres():
+            cursor.execute("SELECT * FROM public.profiles WHERE id = %s FOR UPDATE", (str(user_account_id),))
+            profile_row = cursor.fetchone()
+            if not profile_row:
+                conn.close()
+                return jsonify({"success": False, "status": "error", "message": "User profile not found"}), 404
+
+            age = profile_row.get('age') or 25
+            weight = profile_row.get('weight_kg') or 70.0
+            height = profile_row.get('height_cm') or 175.0
+            current_grade = profile_row.get('current_grade') or 'Grade 4'
+            current_total_exp = int(profile_row.get('total_exp') or 0)
+
+            # 24-HOUR WORKOUT RESTRICTION ENFORCEMENT
+            cursor.execute('''
+                SELECT timestamp, EXTRACT(EPOCH FROM (NOW() - timestamp)) / 3600.0 AS hours_elapsed
+                FROM public.workout_history
+                WHERE user_id = %s
+                ORDER BY timestamp DESC LIMIT 1
+            ''', (str(user_account_id),))
+            latest_history = cursor.fetchone()
+
+            last_hours_elapsed = None
+            if latest_history and latest_history.get('hours_elapsed') is not None:
+                last_hours_elapsed = float(latest_history['hours_elapsed'])
+
+            if last_hours_elapsed is not None and last_hours_elapsed < 24.0:
+                conn.rollback()
+                conn.close()
+                remaining_hours = max(0.0, 24.0 - last_hours_elapsed)
+                hours = int(remaining_hours)
+                minutes = int((remaining_hours - hours) * 60)
+                return jsonify({
+                    "success": False,
+                    "status": "locked",
+                    "message": f"Daily training cap reached! You have already registered a workout within the last 24 hours. Recovery is mandatory before your next training arc. Cooldown active for {hours}h {minutes}m.",
+                    "time_remaining_seconds": int(remaining_hours * 3600),
+                    "total_exp": current_total_exp,
+                    "current_grade": current_grade,
+                    "exp_earned": 0,
+                    "exp": 0
+                }), 200
+
+            # Unlocked: Award EXP and persist completed session atomically
+            total_exp = current_total_exp + exp_earned
+            current_grade, xp_to_next_level = calculate_grade_from_exp(total_exp)
+
+            cursor.execute('''
+                UPDATE public.profiles
+                SET total_exp = %s,
+                    current_grade = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+            ''', (total_exp, current_grade, str(user_account_id)))
+
+            cursor.execute('''
+                INSERT INTO public.workout_history (
+                    user_id, character_id, paradigm, sets_completed, exp_earned, timestamp
+                ) VALUES (%s, %s, %s, %s, %s, NOW())
+                RETURNING id
+            ''', (
+                str(user_account_id),
+                character_id,
+                paradigm,
+                sets_completed,
+                exp_earned
+            ))
+
+            cursor.execute('SELECT COUNT(*) FROM public.workout_history WHERE user_id = %s', (str(user_account_id),))
+            completed_workouts_count = extract_scalar(cursor.fetchone())
+
+            norm_char = normalize_character_id(character_id)
+            norm_mode = normalize_mode_id(paradigm)
+            norm_uni = normalize_universe_id(profile_row.get('selected_universe'), norm_char)
+
+            cursor.execute('''
+                SELECT COUNT(*) FROM public.workout_history
+                WHERE user_id = %s AND character_id = %s AND paradigm = %s
+            ''', (str(user_account_id), norm_char, norm_mode))
+            journey_workouts_count = extract_scalar(cursor.fetchone())
+
+            next_track_idx = journey_workouts_count % 4
+            next_track_key = f"track_{chr(97 + next_track_idx)}"
+
+            cursor.execute('''
+                INSERT INTO public.training_journeys (
+                    user_id, universe, character_id, mode, completed_workouts, current_track, last_activity_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                ON CONFLICT(user_id, universe, character_id, mode) DO UPDATE SET
+                    completed_workouts = EXCLUDED.completed_workouts,
+                    current_track = EXCLUDED.current_track,
+                    last_activity_at = NOW()
+            ''', (str(user_account_id), norm_uni, norm_char, norm_mode, journey_workouts_count, next_track_key))
+
+            cursor.execute('''
+                SELECT id, user_id, universe, character_id, mode, completed_workouts, current_track, last_activity_at, created_at
+                FROM public.training_journeys
+                WHERE user_id = %s AND universe = %s AND character_id = %s AND mode = %s
+            ''', (str(user_account_id), norm_uni, norm_char, norm_mode))
+            journey_row = cursor.fetchone()
+            journey_dict = dict(journey_row) if journey_row else {}
+
+            profile_data = {
+                'selectedUniverse': norm_uni,
+                'selectedCharacter': norm_char,
+                'strategyGoal': norm_mode,
+                'age': age,
+                'height': height,
+                'weight': weight,
+                'medicalHistory': profile_row.get('medical_history') or 'None',
+                'specialPreferences': profile_row.get('special_preferences') or 'None',
+                'user_id': str(user_account_id),
+                'completed_workouts_count': journey_workouts_count,
+            }
+            next_workout_data = generate_custom_routine(profile_data, completed_workouts_count=journey_workouts_count)
+            new_track = next_workout_data.get('daily_track', 'track_a')
+
+            current_streak = calculate_streak(user_account_id)
+
+            response_payload = {
+                "success": True,
+                "status": "success",
+                "new_track": new_track,
+                "track": new_track,
+                "exp": exp_earned,
+                "exp_earned": exp_earned,
+                "exp_gained": exp_earned,
+                "new_exp": exp_earned,
+                "total_exp": total_exp,
+                "current_grade": current_grade,
+                "xp_to_next_level": xp_to_next_level,
+                "current_streak": current_streak,
+                "completed_sessions": completed_workouts_count,
+                "completed_workouts_count": completed_workouts_count,
+                "journey_completed_count": journey_workouts_count,
+                "journey": format_journey_dict(journey_dict, is_active=True),
+                "workout_data": next_workout_data,
+                "message": f"Workout completed! Claimed +{exp_earned} EXP."
+            }
+
+            if idempotency_key:
+                import json
+                cursor.execute('''
+                    INSERT INTO public.idempotency_keys (
+                        idempotency_key, user_id, endpoint, response_body, status_code
+                    ) VALUES (%s, %s, %s, %s::jsonb, %s)
+                    ON CONFLICT (idempotency_key) DO NOTHING
+                ''', (str(idempotency_key), str(user_account_id), '/api/complete-workout', json.dumps(response_payload), 200))
+
+            conn.commit()
+            conn.close()
+
+            return jsonify(response_payload), 200
+
+        # SQLite Branch
         conn.isolation_level = None
         conn.execute('BEGIN IMMEDIATE')
 
@@ -1288,7 +1829,10 @@ def complete_workout():
     except Exception as e:
         if conn:
             try:
-                conn.execute('ROLLBACK')
+                if db.is_postgres():
+                    conn.rollback()
+                else:
+                    conn.execute('ROLLBACK')
                 conn.close()
             except Exception:
                 pass
@@ -1301,7 +1845,8 @@ def get_workout_history():
         ensure_database_tables()
 
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
+        if db.is_sqlite():
+            conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
         auth_user = resolve_request_user(cursor)
@@ -1319,6 +1864,38 @@ def get_workout_history():
         if param_uname and str(param_uname) != str(auth_user['username']):
             conn.close()
             return jsonify({"status": "error", "message": "Forbidden: Cannot access another user's workout history"}), 403
+
+        if db.is_postgres():
+            cursor.execute('''
+                SELECT id, user_id, character_id, paradigm, sets_completed, exp_earned, timestamp
+                FROM public.workout_history
+                WHERE user_id = %s
+                ORDER BY timestamp DESC
+            ''', (str(auth_user['id']),))
+            rows = cursor.fetchall()
+            history = []
+            for row in rows:
+                character_id = row['character_id']
+                character_name = CHARACTER_DISPLAY_NAMES.get(character_id, character_id)
+                paradigm = row['paradigm']
+                sets_completed = row['sets_completed']
+                exp_earned = row['exp_earned']
+                timestamp = str(row['timestamp'])
+
+                history.append({
+                    "id": row['id'],
+                    "user_id": row['user_id'],
+                    "character_id": character_id,
+                    "character_name": character_name,
+                    "paradigm": paradigm,
+                    "sets_completed": sets_completed,
+                    "exp_earned": exp_earned,
+                    "timestamp": timestamp,
+                    "summary": f"{character_name} completed {sets_completed} sets via {paradigm} and earned {exp_earned} EXP."
+                })
+
+            conn.close()
+            return jsonify(history), 200
 
         rows = cursor.execute('''
             SELECT id, user_id, character_id, paradigm, sets_completed, exp_earned, timestamp
@@ -1360,7 +1937,8 @@ def get_user_journeys():
     try:
         ensure_database_tables()
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
+        if db.is_sqlite():
+            conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
         user = resolve_request_user(cursor)
@@ -1378,6 +1956,47 @@ def get_user_journeys():
         if param_uname and str(param_uname) != str(user['username']):
             conn.close()
             return jsonify({"status": "error", "message": "Forbidden: Cannot access another user's journeys"}), 403
+
+        if db.is_postgres():
+            active_char = normalize_character_id(user.get('selected_character')) if user.get('selected_character') else None
+            active_mode = normalize_mode_id(user.get('training_strategy')) if user.get('training_strategy') else None
+
+            cursor.execute('''
+                SELECT * FROM public.training_journeys
+                WHERE user_id = %s
+                ORDER BY last_activity_at DESC, id DESC
+            ''', (str(user['id']),))
+            rows = cursor.fetchall()
+
+            journeys = []
+            for r in rows:
+                cursor.execute('''
+                    SELECT COUNT(*) FROM public.workout_history
+                    WHERE user_id = %s AND character_id = %s AND paradigm = %s
+                ''', (str(user['id']), r['character_id'], r['mode']))
+                wh_count = extract_scalar(cursor.fetchone())
+
+                if wh_count != r['completed_workouts']:
+                    t_idx = wh_count % 4
+                    t_track = f"track_{chr(97 + t_idx)}"
+                    cursor.execute('''
+                        UPDATE public.training_journeys
+                        SET completed_workouts = %s, current_track = %s
+                        WHERE id = %s
+                    ''', (wh_count, t_track, r['id']))
+                    conn.commit()
+                    cursor.execute('SELECT * FROM public.training_journeys WHERE id = %s', (r['id'],))
+                    r = cursor.fetchone()
+
+                is_active = (r['character_id'] == active_char and r['mode'] == active_mode)
+                journeys.append(format_journey_dict(r, is_active=is_active))
+
+            conn.close()
+            return jsonify({
+                "status": "success",
+                "journeys": journeys,
+                "count": len(journeys)
+            }), 200
 
         # Get latest active profile to know current character & mode
         active_profile = cursor.execute(
@@ -1434,7 +2053,8 @@ def start_or_get_journey():
         data = request.get_json(silent=True) or {}
 
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
+        if db.is_sqlite():
+            conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
         user = resolve_request_user(cursor)
@@ -1444,7 +2064,7 @@ def start_or_get_journey():
 
         # Prevent user identity spoofing
         client_uid = data.get('user_id') or data.get('userId')
-        if client_uid and str(client_uid).isdigit() and int(client_uid) != user['id']:
+        if client_uid and str(client_uid) != str(user['id']):
             conn.close()
             return jsonify({"status": "error", "message": "Forbidden: Cannot start journeys for another user"}), 403
 
@@ -1454,6 +2074,39 @@ def start_or_get_journey():
         uni_key = normalize_universe_id(raw_uni, char_key)
         raw_mode = data.get('mode') or data.get('strategy') or data.get('strategyGoal') or 'train-like'
         mode_key = normalize_mode_id(raw_mode)
+
+        if db.is_postgres():
+            journey_row, completed_count = get_or_create_journey(cursor, str(user['id']), uni_key, char_key, mode_key)
+
+            cursor.execute('''
+                UPDATE public.profiles
+                SET selected_universe = %s, selected_character = %s, training_strategy = %s, updated_at = NOW()
+                WHERE id = %s
+            ''', (uni_key, char_key, mode_key, str(user['id'])))
+
+            profile_data = {
+                'selectedUniverse': uni_key,
+                'selectedCharacter': char_key,
+                'strategyGoal': mode_key,
+                'age': user.get('age') or 25,
+                'height': user.get('height_cm') or 175.0,
+                'weight': user.get('weight_kg') or 70.0,
+                'medicalHistory': data.get('medicalHistory', 'None'),
+                'specialPreferences': data.get('specialPreferences', 'None'),
+                'user_id': str(user['id']),
+                'completed_workouts_count': completed_count,
+            }
+            routine_payload = generate_custom_routine(profile_data, completed_workouts_count=completed_count)
+
+            conn.commit()
+            conn.close()
+
+            formatted = format_journey_dict(journey_row, is_active=True)
+            return jsonify({
+                "status": "success",
+                "journey": formatted,
+                "workout_data": routine_payload
+            }), 200
 
         journey_row, completed_count = get_or_create_journey(cursor, user['id'], uni_key, char_key, mode_key)
 
@@ -1506,7 +2159,8 @@ def resume_journey():
         data = request.get_json(silent=True) or {}
 
         conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
+        if db.is_sqlite():
+            conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
         user = resolve_request_user(cursor)
@@ -1516,9 +2170,89 @@ def resume_journey():
 
         # Prevent user identity spoofing
         client_uid = data.get('user_id') or data.get('userId')
-        if client_uid and str(client_uid).isdigit() and int(client_uid) != user['id']:
+        if client_uid and str(client_uid) != str(user['id']):
             conn.close()
             return jsonify({"status": "error", "message": "Forbidden: Cannot access another user's journey"}), 403
+
+        if db.is_postgres():
+            journey_id = data.get('journey_id') or data.get('id')
+            journey_row = None
+
+            if journey_id:
+                try:
+                    cursor.execute('SELECT * FROM public.training_journeys WHERE id = %s', (int(journey_id),))
+                    existing_j = cursor.fetchone()
+                    if existing_j and str(existing_j['user_id']) != str(user['id']):
+                        conn.close()
+                        return jsonify({"status": "error", "message": "Forbidden: Cannot access another user's journey"}), 403
+                    journey_row = existing_j
+                except (ValueError, TypeError):
+                    journey_row = None
+
+            if not journey_row:
+                raw_char = data.get('character') or data.get('character_id') or data.get('selectedCharacter')
+                raw_mode = data.get('mode') or data.get('strategy') or data.get('strategyGoal')
+                if raw_char:
+                    char_key = normalize_character_id(raw_char)
+                    mode_key = normalize_mode_id(raw_mode)
+                    raw_uni = data.get('universe') or data.get('selectedUniverse')
+                    uni_key = normalize_universe_id(raw_uni, char_key)
+                    journey_row, _ = get_or_create_journey(cursor, str(user['id']), uni_key, char_key, mode_key)
+
+            if not journey_row:
+                conn.close()
+                return jsonify({"status": "error", "message": "Journey not found"}), 404
+
+            char_key = journey_row['character_id']
+            uni_key = journey_row['universe']
+            mode_key = journey_row['mode']
+
+            cursor.execute('''
+                SELECT COUNT(*) FROM public.workout_history
+                WHERE user_id = %s AND character_id = %s AND paradigm = %s
+            ''', (str(user['id']), char_key, mode_key))
+            completed_count = extract_scalar(cursor.fetchone())
+
+            track_idx = completed_count % 4
+            current_track = f"track_{chr(97 + track_idx)}"
+
+            cursor.execute('''
+                UPDATE public.training_journeys
+                SET completed_workouts = %s, current_track = %s, last_activity_at = NOW()
+                WHERE id = %s
+            ''', (completed_count, current_track, journey_row['id']))
+
+            cursor.execute('''
+                UPDATE public.profiles
+                SET selected_universe = %s, selected_character = %s, training_strategy = %s, updated_at = NOW()
+                WHERE id = %s
+            ''', (uni_key, char_key, mode_key, str(user['id'])))
+
+            profile_data = {
+                'selectedUniverse': uni_key,
+                'selectedCharacter': char_key,
+                'strategyGoal': mode_key,
+                'age': user.get('age') or 25,
+                'height': user.get('height_cm') or 175.0,
+                'weight': user.get('weight_kg') or 70.0,
+                'medicalHistory': 'None',
+                'specialPreferences': 'None',
+                'user_id': str(user['id']),
+                'completed_workouts_count': completed_count,
+            }
+            routine_payload = generate_custom_routine(profile_data, completed_workouts_count=completed_count)
+
+            conn.commit()
+            cursor.execute('SELECT * FROM public.training_journeys WHERE id = %s', (journey_row['id'],))
+            journey_row = cursor.fetchone()
+            conn.close()
+
+            formatted = format_journey_dict(journey_row, is_active=True)
+            return jsonify({
+                "status": "success",
+                "journey": formatted,
+                "workout_data": routine_payload
+            }), 200
 
         journey_id = data.get('journey_id') or data.get('id')
         journey_row = None
@@ -1613,12 +2347,20 @@ def resume_journey():
 def dev_reset_today():
     """
     DEVELOPER UTILITY: Bypasses the training cap and ACWR restrictions by 
-    purging today's training log entries from the local SQLite database.
+    purging today's training log entries.
     Scoped strictly to the authenticated user.
     """
+    is_production = os.environ.get("FLASK_ENV") == "production" or os.environ.get("VERCEL") == "1"
+    if is_production:
+        return jsonify({
+            "status": "error",
+            "message": "Dev endpoints are disabled in production."
+        }), 403
+
     ensure_database_tables()
     conn = get_db_connection()
-    conn.row_factory = sqlite3.Row
+    if db.is_sqlite():
+        conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
     auth_user = resolve_request_user(cursor)
@@ -1626,29 +2368,52 @@ def dev_reset_today():
         conn.close()
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
 
+    if db.is_postgres():
+        try:
+            cursor.execute(
+                "DELETE FROM public.workout_logs WHERE user_id = %s AND (log_date AT TIME ZONE 'UTC')::date = CURRENT_DATE",
+                (str(auth_user['id']),)
+            )
+            cursor.execute(
+                "DELETE FROM public.workout_history WHERE user_id = %s AND (timestamp AT TIME ZONE 'UTC')::date = CURRENT_DATE",
+                (str(auth_user['id']),)
+            )
+            conn.commit()
+            conn.close()
+            return jsonify({
+                "status": "success",
+                "message": f"Time Chamber activated. Purged today's log entries for {auth_user['username']}."
+            }), 200
+        except Exception as e:
+            conn.close()
+            return jsonify({
+                "status": "error",
+                "message": f"Dev reset failed: {str(e)}"
+            }), 500
+
     today_str = datetime.now().strftime('%Y-%m-%d')
-    
+
     try:
         # 1. Clear entries from the detailed workout metrics log table for this user
         cursor.execute(
             "DELETE FROM workout_logs WHERE user_id = ? AND DATE(log_date) = DATE(?)", 
             (auth_user['id'], today_str)
         )
-        
+
         # 2. Clear entries from the high-level summary workout history table for this user
         cursor.execute(
             "DELETE FROM workout_history WHERE user_id = ? AND DATE(timestamp) = DATE(?)", 
             (auth_user['id'], today_str)
         )
-        
+
         conn.commit()
         conn.close()
-        
+
         return jsonify({
             "status": "success", 
             "message": f"Time Chamber activated. Purged today's log entries for {auth_user['username']}."
         }), 200
-        
+
     except Exception as e:
         conn.close()
         return jsonify({
@@ -1658,5 +2423,7 @@ def dev_reset_today():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000) 
+    debug_mode = os.environ.get('FLASK_DEBUG', '').lower() in ('true', '1')
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=debug_mode, port=port)
 

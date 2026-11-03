@@ -114,22 +114,64 @@ def log_workout_session(user_id, universe, character_name, sets_data):
     ]
     """
     from datetime import date
+    import db
     
-    # Secure the date tracking format strictly as YYYY-MM-DD
     today_str = date.today().isoformat()
     
-    conn = sqlite3.connect('shonenfit.db')
+    if db.is_postgres():
+        conn = None
+        try:
+            conn = db.get_pg_connection()
+            cursor = conn.cursor()
+            query = '''
+                INSERT INTO public.workout_logs
+                (user_id, log_date, universe, character_name, exercise_name, set_index, reps_completed, weight_kg)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            '''
+            batch_records = [
+                (
+                    str(user_id),
+                    today_str,
+                    universe,
+                    character_name,
+                    s['exercise_name'],
+                    s['set_index'],
+                    s['reps'],
+                    s['weight']
+                ) for s in sets_data
+            ]
+            cursor.executemany(query, batch_records)
+            conn.commit()
+            print(f"✅ Successfully logged {len(sets_data)} discrete training sets for user {user_id}.")
+            return True
+        except Exception as e:
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            print(f"❌ Database error encountered during workout logging transaction: {e}")
+            return False
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+    import os
+    db_file = os.environ.get('SQLITE_DATABASE_FILE', 'shonenfit.db')
+    if not os.path.exists(db_file):
+        return False
+
+    conn = sqlite3.connect(db_file)
     cursor = conn.cursor()
     
     try:
-        # Prepare our strict insert query template
         query = '''
             INSERT INTO workout_logs 
             (user_id, log_date, universe, character_name, exercise_name, set_index, reps_completed, weight_kg)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         '''
-        
-        # Build the batch execution list safely
         batch_records = [
             (
                 user_id, 
@@ -142,17 +184,13 @@ def log_workout_session(user_id, universe, character_name, sets_data):
                 s['weight']
             ) for s in sets_data
         ]
-        
-        # Execute atomic batch insertion
         cursor.executemany(query, batch_records)
         conn.commit()
         print(f"✅ Successfully logged {len(sets_data)} discrete training sets for user {user_id}.")
         return True
-        
     except Exception as e:
         conn.rollback()
         print(f"❌ Database error encountered during workout logging transaction: {e}")
         return False
-        
     finally:
         conn.close() 
