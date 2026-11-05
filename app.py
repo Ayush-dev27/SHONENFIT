@@ -5,12 +5,11 @@ import sqlite3
 import hashlib
 import os
 import re
+import logging
 from datetime import datetime, timezone, timedelta
-from database import log_workout_session
 from progression import calculate_fatigue_status 
-# Import both core engines you built
+# Import core routine generation engine
 from generator import generate_custom_routine
-from progression import process_workout_log
 import db
 
 def enforce_production_configuration():
@@ -794,6 +793,11 @@ def calculate_streak(user_id=1):
 
 @app.route('/api/signup', methods=['POST'])
 def signup():
+    if db.is_postgres():
+        return jsonify({
+            "status": "error",
+            "message": "Direct credential login is disabled. Please use Supabase authentication."
+        }), 400
     try:
         data = request.get_json(silent=True) or {}
         username = (data.get('username') or '').strip()
@@ -856,11 +860,17 @@ def signup():
         }), 201
 
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
+        logging.error(f"[API Error] in /api/signup: {str(e)}")
+        return jsonify({"status": "error", "message": "An error occurred while processing your request."}), 500
 
 
 @app.route('/api/login', methods=['POST'])
 def login():
+    if db.is_postgres():
+        return jsonify({
+            "status": "error",
+            "message": "Direct credential login is disabled. Please use Supabase authentication."
+        }), 400
     try:
         data = request.get_json(silent=True) or {}
         username = (data.get('username') or '').strip()
@@ -912,7 +922,8 @@ def login():
         }), 200
 
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
+        logging.error(f"[API Error] in /api/login: {str(e)}")
+        return jsonify({"status": "error", "message": "An error occurred while processing your request."}), 500
 
 
 @app.route('/api/logout', methods=['POST'])
@@ -1273,139 +1284,11 @@ def create_profile():
         }), 201
 
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
+        logging.error(f"[API Error] in /api/profile: {str(e)}")
+        return jsonify({"status": "error", "message": "An error occurred while processing your request."}), 500
 
-
-@app.route('/api/workout/log', methods=['POST'])
-def log_workout():
-    """
-    API endpoint that pulls a user's current metrics from the database,
-    processes them through our progression time-lock and math rules,
-    logs granular set histories, and appends a dynamic fatigue status score.
-    """
-    try:
-        ensure_database_tables()
-        conn = get_db_connection()
-        if db.is_sqlite():
-            conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-
-        auth_user = resolve_request_user(cursor)
-        if not auth_user:
-            conn.close()
-            return jsonify({"status": "error", "message": "Unauthorized"}), 401
-
-        data = request.get_json() or {}
-        incoming_sets = data.get('sets', [])
-
-        if db.is_postgres():
-            user = auth_user
-            current_exp = user.get('total_exp') or 0
-            current_grade = user.get('current_grade') or 'Grade 4'
-            last_logged_str = str(user.get('updated_at') or '')
-            weekly_count = 0
-            current_streak = 0
-
-            calc_result = process_workout_log(
-                current_exp, current_grade, last_logged_str, weekly_count, current_streak
-            )
-
-            if calc_result['status'] == 'locked':
-                conn.close()
-                return jsonify(calc_result), 200
-
-            if incoming_sets:
-                log_workout_session(
-                    user_id=user['id'],
-                    universe=user.get('selected_universe'),
-                    character_name=user.get('selected_character'),
-                    sets_data=incoming_sets
-                )
-
-            fatigue_metrics = calculate_fatigue_status(user['id'])
-            calc_result['fatigue_ratio'] = fatigue_metrics['ratio']
-            calc_result['fatigue_status'] = fatigue_metrics['status']
-            calc_result['fatigue_message'] = fatigue_metrics['message']
-
-            cursor.execute('''
-                UPDATE public.profiles
-                SET total_exp = %s,
-                    current_grade = %s,
-                    updated_at = NOW()
-                WHERE id = %s
-            ''', (
-                calc_result['total_exp'],
-                calc_result['current_grade'],
-                str(user['id'])
-            ))
-
-            conn.commit()
-            conn.close()
-            return jsonify(calc_result), 200
-
-        # SQLite implementation
-        cursor.execute(
-            'SELECT * FROM user_profiles WHERE username = ? ORDER BY id DESC LIMIT 1',
-            (auth_user['username'],)
-        )
-        user = cursor.fetchone()
-
-        if not user:
-            conn.close()
-            return jsonify({"status": "error", "message": "User profile not found. Complete initialization first."}), 404
-
-        current_exp = user['total_exp']
-        current_grade = user['current_grade']
-        last_logged_str = user['last_workout_logged_at']
-        weekly_count = user['weekly_workout_count']
-        current_streak = user['current_streak_weeks']
-
-        calc_result = process_workout_log(
-            current_exp, current_grade, last_logged_str, weekly_count, current_streak
-        )
-
-        if calc_result['status'] == 'locked':
-            conn.close()
-            return jsonify(calc_result), 200
-
-        if incoming_sets:
-            log_workout_session(
-                user_id=user['id'],
-                universe=user['selected_universe'],
-                character_name=user['selected_character'],
-                sets_data=incoming_sets
-            )
-
-        fatigue_metrics = calculate_fatigue_status(user['id'])
-        calc_result['fatigue_ratio'] = fatigue_metrics['ratio']
-        calc_result['fatigue_status'] = fatigue_metrics['status']
-        calc_result['fatigue_message'] = fatigue_metrics['message']
-
-        cursor.execute('''
-            UPDATE user_profiles
-            SET total_exp = ?,
-                current_grade = ?,
-                weekly_workout_count = ?,
-                last_workout_logged_at = ?
-            WHERE id = ?
-        ''', (
-            calc_result['total_exp'],
-            calc_result['current_grade'],
-            calc_result['weekly_count'],
-            calc_result['timestamp_iso'],
-            user['id']
-        ))
-
-        conn.commit()
-        conn.close()
-
-        return jsonify(calc_result), 200
-
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
 
 @app.route('/api/complete-workout', methods=['POST'])
-@app.route('/api/workout-complete', methods=['POST'])
 def complete_workout():
     conn = None
     try:
@@ -1836,7 +1719,8 @@ def complete_workout():
                 conn.close()
             except Exception:
                 pass
-        return jsonify({"success": False, "status": "error", "message": str(e)}), 400
+        logging.error(f"[API Error] in /api/complete-workout: {str(e)}")
+        return jsonify({"success": False, "status": "error", "message": "An error occurred while processing your request."}), 500
 
 
 @app.route('/api/workout-history', methods=['GET'])
@@ -1929,7 +1813,8 @@ def get_workout_history():
         return jsonify(history), 200
 
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 400 
+        logging.error(f"[API Error] in /api/workout-history: {str(e)}")
+        return jsonify({"status": "error", "message": "An error occurred while processing your request."}), 500
 
 
 @app.route('/api/journeys', methods=['GET'])
@@ -2043,7 +1928,8 @@ def get_user_journeys():
         }), 200
 
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
+        logging.error(f"[API Error] in /api/journeys: {str(e)}")
+        return jsonify({"status": "error", "message": "An error occurred while processing your request."}), 500
 
 
 @app.route('/api/journeys/start', methods=['POST'])
@@ -2149,7 +2035,8 @@ def start_or_get_journey():
         }), 200
 
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
+        logging.error(f"[API Error] in /api/journeys/start: {str(e)}")
+        return jsonify({"status": "error", "message": "An error occurred while processing your request."}), 500
 
 
 @app.route('/api/journeys/resume', methods=['POST'])
@@ -2340,7 +2227,8 @@ def resume_journey():
         }), 200
 
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
+        logging.error(f"[API Error] in /api/journeys/resume: {str(e)}")
+        return jsonify({"status": "error", "message": "An error occurred while processing your request."}), 500
 
 
 @app.route('/api/dev/reset-today', methods=['POST'])
@@ -2386,9 +2274,10 @@ def dev_reset_today():
             }), 200
         except Exception as e:
             conn.close()
+            logging.error(f"[API Error] in /api/dev/reset-today: {str(e)}")
             return jsonify({
                 "status": "error",
-                "message": f"Dev reset failed: {str(e)}"
+                "message": "An error occurred while processing your request."
             }), 500
 
     today_str = datetime.now().strftime('%Y-%m-%d')
@@ -2416,9 +2305,10 @@ def dev_reset_today():
 
     except Exception as e:
         conn.close()
+        logging.error(f"[API Error] in /api/dev/reset-today: {str(e)}")
         return jsonify({
             "status": "error", 
-            "message": f"Dev reset failed: {str(e)}"
+            "message": "An error occurred while processing your request."
         }), 500 
 
 
