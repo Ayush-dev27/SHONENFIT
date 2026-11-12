@@ -14,3 +14,10 @@ __pycache__/
 .agents/
 .vscode/
 *.log 
+
+# Environment variables
+.env
+.env.*
+
+# Database backups
+*.bak*

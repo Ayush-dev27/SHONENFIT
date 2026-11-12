@@ -5,9 +5,19 @@
 // ============================================================================
 // SUPABASE AUTH CONFIGURATION
 // ============================================================================
+// MANUAL KEY INSERTION:
+// To connect your Supabase project, insert your Project URL and Anon Key below,
+// or configure SUPABASE_URL and SUPABASE_ANON_KEY in your environment (.env).
+const DEFAULT_SUPABASE_URL = 'https://ndgsxsrqspdogwnaqzsm.supabase.co'; 
+const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_Z4rnNqk0P6LAt8aMMnu-6Q_ZjKWNUL8';
 
-const SUPABASE_URL = 'https://ndgsxsrqspdogwnaqzsm.supabase.co'; 
-const SUPABASE_ANON_KEY = 'sb_publishable_Z4rnNqk0P6LAt8aMMnu-6Q_ZjKWNUL8';
+let SUPABASE_URL = (typeof window !== 'undefined' && window.__SHONENFIT_SUPABASE_URL__)
+  || (typeof window !== 'undefined' && window.localStorage && window.localStorage.getItem('SHONENFIT_SUPABASE_URL'))
+  || DEFAULT_SUPABASE_URL;
+
+let SUPABASE_ANON_KEY = (typeof window !== 'undefined' && window.__SHONENFIT_SUPABASE_ANON_KEY__)
+  || (typeof window !== 'undefined' && window.localStorage && window.localStorage.getItem('SHONENFIT_SUPABASE_ANON_KEY'))
+  || DEFAULT_SUPABASE_ANON_KEY;
 
 let supabaseClient = null;
 
@@ -15,12 +25,17 @@ function getSupabaseClient() {
   if (supabaseClient) {
     return supabaseClient;
   }
-  if (typeof window !== 'undefined' && window.supabase && typeof window.supabase.createClient === 'function') {
-    try {
-      supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    } catch (err) {
-      console.warn('[SHONENFIT] Supabase client init notice:', err.message);
-    }
+  const supabaseLib = (typeof window !== 'undefined') ? (window.supabase || window.Supabase) : null;
+  if (!supabaseLib || typeof supabaseLib.createClient !== 'function') {
+    return null;
+  }
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+  try {
+    supabaseClient = supabaseLib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  } catch (err) {
+    console.warn('[SHONENFIT] Supabase client init notice:', err.message);
   }
   return supabaseClient;
 }
@@ -30,7 +45,8 @@ function isSupabaseConfigured() {
     Boolean(SUPABASE_URL) &&
     Boolean(SUPABASE_ANON_KEY) &&
     !SUPABASE_URL.includes('YOUR_SUPABASE_PROJECT_ID') &&
-    !SUPABASE_ANON_KEY.includes('YOUR_SUPABASE_ANON_KEY')
+    !SUPABASE_ANON_KEY.includes('YOUR_SUPABASE_ANON_KEY') &&
+    SUPABASE_ANON_KEY !== 'REPLACE_WITH_SUPABASE_ANON_KEY'
   );
 }
 
@@ -128,6 +144,7 @@ const appState = {
   latestWorkoutData: null,
   isSubmitting: false,
   isAuthenticated: false,
+  currentUser: null,
   completedWorkoutsCount: 0,
   savedJourneys: [],
   activeJourney: null,
@@ -298,8 +315,6 @@ document.addEventListener('DOMContentLoaded', () => {
   wireHonestyGateControls();
   ensureWorkoutRuntimeStyles();
   bindSetTrackingSelectors();
-  fetchWorkoutHistory();
-  fetchTrainingJourneys();
   wireRouteListeners();
   checkAuthSessionOnLoad();
 });
@@ -342,9 +357,18 @@ function syncBrowserUrl(viewId) {
   }
 }
 
+function getRouteFromLocation() {
+  const hash = (typeof window !== 'undefined' && window.location.hash) ? window.location.hash : '';
+  // Ignore OAuth tokens and errors in URL hash when determining route
+  if (hash && !hash.includes('access_token=') && !hash.includes('refresh_token=') && !hash.includes('error=')) {
+    return hash;
+  }
+  return (typeof window !== 'undefined' && window.location.pathname) ? window.location.pathname : '';
+}
+
 function wireRouteListeners() {
   const handleRoute = () => {
-    const route = window.location.hash || window.location.pathname;
+    const route = getRouteFromLocation();
     const normalized = normalizeRouteId(route);
     if (normalized) {
       navigateView(normalized);
@@ -431,12 +455,16 @@ function MapsToView(viewId) {
 // ============================================================================
 
 function selectUniverse(universeName) {
+  const universeKey = normalizeUniverseKey(universeName);
+  appState.selectedUniverse = universeKey;
+  try {
+    localStorage.setItem('shonenfit.selectedUniverse', universeKey || '');
+  } catch (_) {}
+
   if (!appState.isAuthenticated) {
     showAuthPortal();
     return;
   }
-  const universeKey = normalizeUniverseKey(universeName);
-  appState.selectedUniverse = universeKey;
   populateCharacterPool(universeKey);
   navigateView('character-view');
 }
@@ -468,6 +496,11 @@ function populateCharacterPool(universeName) {
 function selectCharacter(characterName, universeName) {
   appState.selectedCharacter = characterName;
   appState.selectedUniverse = normalizeUniverseKey(universeName || appState.selectedUniverse);
+
+  try {
+    localStorage.setItem('shonenfit.selectedUniverse', appState.selectedUniverse || '');
+    localStorage.setItem('shonenfit.selectedCharacter', appState.selectedCharacter || '');
+  } catch (_) {}
 
   if (!appState.isAuthenticated) {
     showAuthPortal();
@@ -522,58 +555,151 @@ function applyUniverseCardGraphics() {
 // ============================================================================
 
 async function checkAuthSessionOnLoad() {
-  if (isSupabaseConfigured()) {
-    const client = getSupabaseClient();
-    if (client) {
-      try {
-        const { data: { session }, error } = await client.auth.getSession();
-        if (session && session.user) {
-          const user = session.user;
-          const meta = user.user_metadata || {};
-          const profilePayload = {
-            username: meta.username || user.email?.split('@')[0] || 'Warrior',
-            email: user.email,
-            age: meta.age || DEFAULT_PROFILE_VALUES.age,
-            weight: meta.weight || DEFAULT_PROFILE_VALUES.weight,
-            height: meta.height || DEFAULT_PROFILE_VALUES.height,
-            total_exp: meta.total_exp || 0,
-            selected_universe: meta.selected_universe,
-            selected_character: meta.selected_character,
-            training_strategy: meta.training_strategy,
-          };
-          handleAuthSuccess({ status: 'success', profile: profilePayload, user }, profilePayload, 'supabase-session');
-          return;
-        }
+  const hash = (typeof window !== 'undefined' && window.location.hash) ? window.location.hash : '';
+  const search = (typeof window !== 'undefined' && window.location.search) ? window.location.search : '';
 
-        // Listen for Supabase OAuth redirects or auth state changes
-        client.auth.onAuthStateChange((event, session) => {
-          if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user && !appState.isAuthenticated) {
-            const user = session.user;
-            const meta = user.user_metadata || {};
-            const profilePayload = {
-              username: meta.username || user.email?.split('@')[0] || 'Warrior',
-              email: user.email,
-              age: meta.age || DEFAULT_PROFILE_VALUES.age,
-              weight: meta.weight || DEFAULT_PROFILE_VALUES.weight,
-              height: meta.height || DEFAULT_PROFILE_VALUES.height,
-              total_exp: meta.total_exp || 0,
-              selected_universe: meta.selected_universe,
-              selected_character: meta.selected_character,
-              training_strategy: meta.training_strategy,
-            };
-            handleAuthSuccess({ status: 'success', profile: profilePayload, user }, profilePayload, 'supabase-oauth');
-          } else if (event === 'SIGNED_OUT') {
-            appState.isAuthenticated = false;
-            localStorage.removeItem(AUTH_FLAG_STORAGE_KEY);
-            showAuthPortal();
+  const hasOAuthError = hash.includes('error=') || search.includes('error=');
+  const hasOAuthTokens = hash.includes('access_token=') || hash.includes('refresh_token=');
+  const hasOAuthCode = search.includes('code=');
+  const hasOAuthRedirect = hasOAuthTokens || hasOAuthCode || hasOAuthError;
+
+  if (hasOAuthError) {
+    console.warn('[SHONENFIT] OAuth error detected in URL redirect:', hash || search);
+    try {
+      const params = new URLSearchParams(hash.startsWith('#') ? hash.substring(1) : search);
+      const errorMsg = params.get('error_description') || params.get('error') || 'OAuth authentication failed.';
+      showAuthError(decodeURIComponent(errorMsg.replace(/\+/g, ' ')));
+    } catch {
+      showAuthError('OAuth authentication failed.');
+    }
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+    showAuthPortal();
+    return;
+  }
+
+  let session = null;
+  const client = getSupabaseClient();
+
+  if (client && typeof client.auth?.getSession === 'function') {
+    try {
+      if (hasOAuthTokens || hasOAuthCode) {
+        // Ensure client.auth.getSession() or client.auth.onAuthStateChange resolves BEFORE checking authentication or triggering any sync requests
+        session = await new Promise(async (resolve) => {
+          let settled = false;
+          let sub = null;
+
+          const finish = (resSession) => {
+            if (!settled) {
+              settled = true;
+              if (sub && typeof sub.unsubscribe === 'function') {
+                try { sub.unsubscribe(); } catch (_) {}
+              }
+              resolve(resSession);
+            }
+          };
+
+          // 1. Immediate getSession check
+          try {
+            const { data } = await client.auth.getSession();
+            if (data?.session?.user) {
+              return finish(data.session);
+            }
+          } catch (e) {
+            console.warn('[SHONENFIT] Initial getSession error during OAuth resolution:', e);
           }
+
+          // 2. onAuthStateChange listener
+          try {
+            const { data: authListener } = client.auth.onAuthStateChange((event, s) => {
+              if ((event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION') && s?.user) {
+                finish(s);
+              }
+            });
+            sub = authListener?.subscription;
+          } catch (e) {
+            console.warn('[SHONENFIT] onAuthStateChange setup error:', e);
+          }
+
+          // 3. Fallback timeout
+          setTimeout(async () => {
+            if (!settled) {
+              try {
+                const { data } = await client.auth.getSession();
+                finish(data?.session || null);
+              } catch {
+                finish(null);
+              }
+            }
+          }, 3000);
         });
-      } catch (err) {
-        console.info('[SHONENFIT] Supabase session probe notice:', err);
+      } else {
+        const { data } = await client.auth.getSession();
+        session = data?.session || null;
       }
+    } catch (err) {
+      console.info('[SHONENFIT] Supabase session probe notice:', err);
     }
   }
 
+  // When session is restored/detected:
+  if (session && session.user) {
+    appState.isAuthenticated = true;
+    appState.currentUser = session.user;
+    localStorage.setItem(AUTH_FLAG_STORAGE_KEY, 'true');
+
+    // Explicitly close/hide the auth gate modal / remove any auth overlay
+    hideAuthPortal();
+    const authOverlay = document.getElementById('auth-portal-overlay');
+    if (authOverlay) {
+      authOverlay.classList.add('hidden');
+      authOverlay.style.display = 'none';
+    }
+    const authGate = document.getElementById('auth-gate');
+    if (authGate) {
+      authGate.style.display = 'none';
+    }
+
+    // Clean the URL hash using window.history.replaceState to prevent replay loops
+    if (window.history && window.history.replaceState && (window.location.hash || window.location.search.includes('code='))) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+
+    // Wire ongoing onAuthStateChange listener
+    if (client && typeof client.auth?.onAuthStateChange === 'function') {
+      client.auth.onAuthStateChange((event, s) => {
+        if (event === 'SIGNED_OUT') {
+          appState.isAuthenticated = false;
+          appState.currentUser = null;
+          localStorage.removeItem(AUTH_FLAG_STORAGE_KEY);
+          showAuthPortal();
+        } else if (s?.user) {
+          appState.isAuthenticated = true;
+          appState.currentUser = s.user;
+        }
+      });
+    }
+
+    const user = session.user;
+    const meta = user.user_metadata || {};
+    const profilePayload = {
+      username: meta.username || user.email?.split('@')[0] || 'Warrior',
+      email: user.email,
+      age: meta.age || DEFAULT_PROFILE_VALUES.age,
+      weight: meta.weight || DEFAULT_PROFILE_VALUES.weight,
+      height: meta.height || DEFAULT_PROFILE_VALUES.height,
+      total_exp: meta.total_exp || 0,
+      selected_universe: meta.selected_universe,
+      selected_character: meta.selected_character,
+      training_strategy: meta.training_strategy,
+    };
+
+    handleAuthSuccess({ status: 'success', profile: profilePayload, user }, profilePayload, hasOAuthRedirect ? 'supabase-oauth' : 'supabase-session');
+    return;
+  }
+
+  // Fallback to backend profile probe (cookie/dev session)
   try {
     const response = await fetch(API_PROFILE_ENDPOINT, {
       method: 'GET',
@@ -583,6 +709,7 @@ async function checkAuthSessionOnLoad() {
 
     if (response.status === 401) {
       appState.isAuthenticated = false;
+      appState.currentUser = null;
       localStorage.removeItem(AUTH_FLAG_STORAGE_KEY);
       showAuthPortal();
       return;
@@ -738,9 +865,9 @@ async function handleOAuthSignIn(provider) {
   }
 
   try {
-    const redirectUrl = window.location.origin + window.location.pathname;
+    const redirectUrl = window.location.origin + '/path';
     const { data, error } = await client.auth.signInWithOAuth({
-      provider: provider,
+      provider: provider || 'google',
       options: {
         redirectTo: redirectUrl
       }
@@ -756,6 +883,11 @@ async function handleOAuthSignIn(provider) {
     setSocialLoadingState(provider, false);
   }
 }
+
+async function signInWithOAuth(provider = 'google') {
+  return handleOAuthSignIn(provider);
+}
+window.signInWithOAuth = signInWithOAuth;
 
 async function submitLoginAuth() {
   clearAuthError();
@@ -944,8 +1076,22 @@ async function submitLocalServerAuth(mode, payload) {
 
 function handleAuthSuccess(result = {}, submittedPayload = {}, mode = 'login') {
   appState.isAuthenticated = true;
+  if (result.user) {
+    appState.currentUser = result.user;
+  }
   localStorage.setItem(AUTH_FLAG_STORAGE_KEY, 'true');
   hideAuthPortal();
+
+  const currentPath = (typeof window !== 'undefined' && window.location.pathname) ? window.location.pathname.toLowerCase() : '';
+  const currentRoute = normalizeRouteId(getRouteFromLocation());
+
+  // If user navigated or was redirected to /path (e.g. from Google OAuth), preserve and navigate to path-gate
+  if (currentRoute === 'path-gate' || currentPath.includes('/path')) {
+    showPathGate();
+    navigateView('path-gate');
+    return;
+  }
+
   hidePathGate();
 
   const storedProfile = getStoredActiveProfile();
@@ -997,8 +1143,7 @@ function handleAuthSuccess(result = {}, submittedPayload = {}, mode = 'login') {
   fetchTrainingJourneys();
 
   // If already-authenticated user loaded a deep protected route
-  const currentRoute = normalizeRouteId(window.location.hash || window.location.pathname);
-  if (mode === 'session-probe' && currentRoute && currentRoute !== 'home' && currentRoute !== 'auth-view' && currentRoute !== 'universe-view') {
+  if (currentRoute && currentRoute !== 'home' && currentRoute !== 'auth-view' && currentRoute !== 'universe-view') {
     if (currentRoute === 'dashboard-view' && workoutData) {
       navigateView('dashboard-view');
       return;
@@ -1112,7 +1257,13 @@ function hideAuthPortal() {
     authGate.style.display = 'none';
   }
 
-  document.getElementById('auth-portal-overlay')?.classList.add('hidden');
+  const overlay = document.getElementById('auth-portal-overlay');
+  if (overlay) {
+    overlay.classList.add('hidden');
+    overlay.style.display = 'none';
+  }
+
+  setMainAppVisibility(true);
 }
 
 function setMainAppVisibility(isVisible) {
@@ -1300,6 +1451,30 @@ async function submitMetricsProfile() {
     return;
   }
 
+  // Protected Action Safeguard:
+  // Await client.auth.getSession() directly to get the latest access token before evaluating auth state.
+  const client = getSupabaseClient();
+  let session = null;
+  if (client && typeof client.auth?.getSession === 'function') {
+    try {
+      const { data } = await client.auth.getSession();
+      session = data?.session;
+      if (session?.user) {
+        appState.isAuthenticated = true;
+        appState.currentUser = session.user;
+      }
+    } catch (err) {
+      console.warn('[SHONENFIT] submitMetricsProfile session check warning:', err);
+    }
+  }
+
+  // Do not trigger showAuthPortal() if a valid session exists in Supabase client storage
+  if (!session && !appState.isAuthenticated) {
+    showAuthPortal();
+    showAuthError('Authentication required. Please sign in or register to save your warrior profile.');
+    return;
+  }
+
   appState.isSubmitting = true;
   const payload = buildProfilePayload();
   const selectionSection = document.getElementById('path-gate');
@@ -1322,11 +1497,30 @@ async function submitMetricsProfile() {
 
     const result = await parseProfileResponse(response);
 
-    if (!response.ok || result?.status !== 'success') {
-      console.error('[SHONENFIT] Backend profile sync failed:', result);
+    const isSuccess = response.ok && (response.status === 200 || response.status === 201 || result?.status === 'success');
+    if (!isSuccess) {
+      console.warn('[SHONENFIT] Backend profile sync failed:', result);
+      if (response.status === 401) {
+        const checkClient = getSupabaseClient();
+        const freshSession = checkClient ? (await checkClient.auth.getSession().catch(() => ({})))?.data?.session : null;
+        if (!freshSession) {
+          appState.isAuthenticated = false;
+          showAuthPortal();
+          showAuthError('Authentication required. Please sign in or register to save your warrior profile.');
+        } else {
+          showAuthError('Authorization failed with server. Please verify your account or sign in again.');
+        }
+        return;
+      }
       alert(`Database Sync Failed: ${result?.message || `HTTP ${response.status}`}`);
       return;
     }
+
+    // Mark authenticated and close all gates/modals
+    appState.isAuthenticated = true;
+    localStorage.setItem(AUTH_FLAG_STORAGE_KEY, 'true');
+    hideAuthPortal();
+    hidePathGate();
 
     const workoutData = normalizeWorkoutData(result.workout_data);
 
@@ -1352,11 +1546,10 @@ async function submitMetricsProfile() {
     };
     appState.selectedDirection = payload.strategyGoal;
 
-    const didRenderDashboard = renderDashboardSummary(workoutData);
-    if (!didRenderDashboard) {
-      console.error('[SHONENFIT] Dashboard render target was not available. View transition cancelled.');
-      alert('Workout data was generated, but the dashboard container could not be found.');
-      return;
+    try {
+      renderDashboardSummary(workoutData);
+    } catch (dashErr) {
+      console.warn('[SHONENFIT] Dashboard render summary notice:', dashErr);
     }
 
     previousGrade = result.current_grade || result.profile?.current_grade || result.initial_grade || previousGrade;
@@ -1367,7 +1560,9 @@ async function submitMetricsProfile() {
 
     updateWorkoutPath();
     populateWorkoutExercises();
-    MapsToView('workout-view');
+
+    // Immediately navigate the view to the generated routine / workout deck
+    navigateView('workout-view');
   } catch (error) {
     console.error('[SHONENFIT] Profile response processing failed:', error);
     restorePathGateAfterSubmissionError();
@@ -1377,6 +1572,24 @@ async function submitMetricsProfile() {
     setSubmitLoadingState(false);
   }
 }
+
+async function generateCustomRoutine() {
+  const client = getSupabaseClient();
+  if (client && typeof client.auth?.getSession === 'function') {
+    try {
+      const { data } = await client.auth.getSession();
+      if (data?.session?.user) {
+        appState.isAuthenticated = true;
+        appState.currentUser = data.session.user;
+      }
+    } catch (err) {
+      console.warn('[SHONENFIT] generateCustomRoutine session check warning:', err);
+    }
+  }
+  return await submitMetricsProfile();
+}
+
+window.generateCustomRoutine = generateCustomRoutine;
 
 function restorePathGateAfterSubmissionError() {
   const selectionSection = document.getElementById('path-gate');
@@ -1483,9 +1696,12 @@ function safeText(value, fallback) {
 function buildProfilePayload() {
   const strategyGoal = normalizeStrategyGoal(getCheckedValue('strategyGoal') || DEFAULT_PROFILE_VALUES.strategyGoal);
 
+  const savedUniverse = (typeof localStorage !== 'undefined' && localStorage.getItem('shonenfit.selectedUniverse')) || '';
+  const savedCharacter = (typeof localStorage !== 'undefined' && localStorage.getItem('shonenfit.selectedCharacter')) || '';
+
   const payload = {
-    selectedUniverse: appState.selectedUniverse || 'demon-slayer',
-    selectedCharacter: getCanonicalCharacterId(appState.selectedCharacter) || 'tanjiro',
+    selectedUniverse: appState.selectedUniverse || savedUniverse || 'demon-slayer',
+    selectedCharacter: getCanonicalCharacterId(appState.selectedCharacter || savedCharacter) || 'tanjiro',
     age: getInputValue('user-age', 'age') || DEFAULT_PROFILE_VALUES.age,
     height: getInputValue('user-height', 'height') || DEFAULT_PROFILE_VALUES.height,
     weight: getInputValue('user-weight', 'weight') || DEFAULT_PROFILE_VALUES.weight,
@@ -1657,6 +1873,10 @@ async function fetchWorkoutHistory() {
   if (!container) {
     return;
   }
+  if (!appState.isAuthenticated) {
+    renderWorkoutHistory([]);
+    return;
+  }
 
   try {
     const response = await fetch(API_WORKOUT_HISTORY_ENDPOINT, {
@@ -1664,10 +1884,17 @@ async function fetchWorkoutHistory() {
       credentials: 'include',
       headers: await getAuthHeaders(),
     });
+
+    if (response.status === 401) {
+      console.info('[SHONENFIT] Workout history fetch deferred: unauthenticated.');
+      renderWorkoutHistory([]);
+      return;
+    }
+
     const history = await response.json();
 
     if (!response.ok || !Array.isArray(history)) {
-      console.error('[SHONENFIT] Workout history fetch failed:', history);
+      console.warn('[SHONENFIT] Workout history fetch skipped:', history);
       renderWorkoutHistory([]);
       return;
     }
@@ -1920,6 +2147,11 @@ async function resumeJourney(journeyId) {
     });
 
     if (!response.ok) {
+      if (response.status === 401) {
+        showAuthPortal();
+        showAuthError('Session expired. Please sign in to resume your training journey.');
+        return;
+      }
       const errData = await response.json().catch(() => ({}));
       alert(errData.message || 'Failed to resume training journey.');
       return;
@@ -2671,6 +2903,12 @@ async function submitWorkoutCompletion(event) {
     return;
   }
 
+  if (!appState.isAuthenticated) {
+    showAuthPortal();
+    showAuthError('Please sign in to record your workout and claim EXP.');
+    return;
+  }
+
   await unlockTimerAudioContext();
 
   const completionContext = captureWorkoutCompletionContext();
@@ -2740,6 +2978,11 @@ async function submitWorkoutCompletion(event) {
 
   // Authoritative check: if locked or rejected by backend, award ZERO EXP and show recovery notice
   if (!response.ok || result.status === 'locked' || result.success === false) {
+    if (response.status === 401) {
+      showAuthPortal();
+      showAuthError('Session expired. Please sign in to record your completed workout.');
+      return;
+    }
     showDailyTrainingCapWarning(result.message || 'Daily training cap reached! Recovery is mandatory.', 'Recovery Lock Active');
     navigateView('dashboard-view');
     return;

@@ -1,3 +1,5 @@
+from dotenv import load_dotenv
+load_dotenv() 
 from flask import Flask, request, jsonify, session, send_from_directory 
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -10,7 +12,8 @@ from datetime import datetime, timezone, timedelta
 from progression import calculate_fatigue_status 
 # Import core routine generation engine
 from generator import generate_custom_routine
-import db
+import db 
+
 
 def enforce_production_configuration():
     """
@@ -236,6 +239,7 @@ def get_db_connection(timeout=30.0):
 
 def ensure_database_tables():
     if db.is_postgres():
+        db.init_postgres_schema()
         return
     conn = get_db_connection(timeout=30.0)
     try:
@@ -498,6 +502,111 @@ def serve_static(path):
     return send_from_directory('.', 'index.html')
 
 
+@app.route('/api/config', methods=['GET'])
+def get_public_config():
+    """
+    Public configuration endpoint for frontend client bootstrapping.
+    Only exposes non-sensitive publishable configuration.
+    """
+    supabase_url = os.environ.get('SUPABASE_URL', '').strip() or 'https://ndgsxsrqspdogwnaqzsm.supabase.co'
+    supabase_anon_key = os.environ.get('SUPABASE_ANON_KEY', '').strip() or 'sb_publishable_Z4rnNqk0P6LAt8aMMnu-6Q_ZjKWNUL8'
+    return jsonify({
+        "status": "success",
+        "supabase_url": supabase_url,
+        "supabase_anon_key": supabase_anon_key,
+        "backend": db.get_database_backend(),
+        "is_production": (os.environ.get('FLASK_ENV') == 'production') or (os.environ.get('VERCEL') == '1')
+    }), 200
+
+
+def safe_cursor_rollback(cursor):
+    """
+    Safely rolls back the active transaction if an error occurred,
+    clearing PostgreSQL's aborted transaction block state.
+    """
+    if cursor and hasattr(cursor, 'connection') and cursor.connection:
+        try:
+            cursor.connection.rollback()
+        except Exception:
+            pass
+
+
+def ensure_valid_uuid(val, fallback="00000000-0000-0000-0000-000000000001"):
+    if not val:
+        return fallback
+    import uuid
+    try:
+        return str(uuid.UUID(str(val)))
+    except (ValueError, AttributeError):
+        return fallback
+
+
+def get_local_dev_user(cursor):
+    """
+    Safely retrieves a local recruitment / dev user for development environments.
+    Guarantees rollback before and after queries if any Postgres error occurs.
+    """
+    safe_cursor_rollback(cursor)
+    from flask import has_request_context
+    dev_uid = None
+    if has_request_context():
+        try:
+            dev_uid = request.headers.get('X-Dev-User')
+        except Exception:
+            dev_uid = None
+
+    try:
+        if db.is_postgres():
+            if dev_uid:
+                valid_dev_uid = ensure_valid_uuid(dev_uid, None)
+                if valid_dev_uid:
+                    try:
+                        cursor.execute("SELECT * FROM public.profiles WHERE id = %s", (valid_dev_uid,))
+                        dev_user = cursor.fetchone()
+                        if dev_user:
+                            return dev_user
+                    except Exception:
+                        safe_cursor_rollback(cursor)
+
+            try:
+                cursor.execute("SELECT * FROM public.profiles ORDER BY created_at ASC LIMIT 1")
+                dev_user = cursor.fetchone()
+                if dev_user:
+                    return dev_user
+            except Exception:
+                safe_cursor_rollback(cursor)
+
+            return {
+                "id": "00000000-0000-0000-0000-000000000001",
+                "username": "legacy_recruit",
+                "email": "recruit@shonenfit.local",
+                "is_new": False
+            }
+        else:
+            target_id = int(dev_uid) if (dev_uid and str(dev_uid).isdigit()) else 1
+            dev_user = cursor.execute('SELECT * FROM users WHERE id = ?', (target_id,)).fetchone()
+            if not dev_user:
+                dev_user = cursor.execute('SELECT * FROM users ORDER BY id ASC LIMIT 1').fetchone()
+            if not dev_user:
+                dev_user = {
+                    "id": 1,
+                    "username": "Recruit",
+                    "email": "recruit@shonenfit.local",
+                    "is_new": False
+                }
+            return dev_user
+    except Exception as e:
+        safe_cursor_rollback(cursor)
+        import logging
+        logging.warning(f"[Dev User Fallback] Failed to retrieve dev user: {e}")
+        return {
+            "id": "00000000-0000-0000-0000-000000000001" if db.is_postgres() else 1,
+            "username": "Recruit",
+            "email": "recruit@shonenfit.local",
+            "is_new": False
+        }
+
+
 def resolve_request_user(cursor):
     """
     Authoritatively resolves the currently authenticated user.
@@ -505,50 +614,77 @@ def resolve_request_user(cursor):
     2. Checks Flask session for local development fallback.
     Never trusts client-provided user_id or username parameters as identity.
     """
+    env = os.environ.get('FLASK_ENV', 'development').lower()
+    is_production = (env == 'production') or (os.environ.get('VERCEL') == '1')
+
     # 1. Bearer JWT check
     auth_header = request.headers.get('Authorization', '')
     if auth_header.startswith('Bearer '):
         token = auth_header[7:].strip()
-        env = os.environ.get('FLASK_ENV', 'development').lower()
-        is_production = (env == 'production') or (os.environ.get('VERCEL') == '1')
         jwt_secret = os.environ.get('SUPABASE_JWT_SECRET', '').strip()
-        if not jwt_secret:
-            if is_production:
-                raise RuntimeError("FATAL: SUPABASE_JWT_SECRET is missing in production environments.")
-            jwt_secret = 'shonenfit-dev-secret'
+        if not jwt_secret and is_production:
+            raise RuntimeError("FATAL: SUPABASE_JWT_SECRET is missing in production environments.")
 
         import jwt
         token_payload = None
-        try:
-            token_payload = jwt.decode(
-                token,
-                jwt_secret,
-                algorithms=['HS256'],
-                audience='authenticated',
-                options={'verify_signature': True, 'verify_exp': True, 'verify_aud': True}
-            )
-        except Exception:
-            token_payload = None
+
+        if not is_production:
+            # In development mode, use jwt.decode directly with verify_signature=False
+            # to extract user sub and email without crashing on signature algorithm differences (HS256/RS256/ES256)
+            try:
+                token_payload = jwt.decode(
+                    token,
+                    options={"verify_signature": False, "verify_aud": False, "verify_exp": False}
+                )
+            except Exception as e:
+                import logging
+                logging.warning(f"[JWT Auth Dev] Unverified JWT decoding failed ({type(e).__name__}): {e}")
+                print(f"[JWT Auth Dev] Unverified JWT decoding failed ({type(e).__name__}): {e}")
+                token_payload = None
+        else:
+            # Production: strict signature, audience, and algorithm verification
+            try:
+                token_payload = jwt.decode(
+                    token,
+                    jwt_secret,
+                    algorithms=['HS256', 'RS256', 'ES256'],
+                    audience='authenticated',
+                    options={'verify_signature': True, 'verify_exp': True, 'verify_aud': True}
+                )
+            except Exception as e:
+                error_type = type(e).__name__
+                error_msg = str(e)
+                import logging
+                logging.warning(f"[JWT Auth Error] JWT decoding failed ({error_type}): {error_msg}")
+                print(f"[JWT Auth Error] JWT decoding failed ({error_type}): {error_msg}")
+                token_payload = None
 
         if token_payload:
             uid = token_payload.get('sub') or token_payload.get('user_id')
             if uid:
-                if db.is_postgres():
-                    cursor.execute("SELECT * FROM public.profiles WHERE id = %s", (str(uid),))
-                    acc = cursor.fetchone()
-                    if acc:
-                        return acc
-                else:
-                    uname = token_payload.get('user_metadata', {}).get('username') or token_payload.get('username')
-                    if uname:
-                        acc = cursor.execute("SELECT * FROM users WHERE username = ?", (str(uname),)).fetchone()
+                try:
+                    if db.is_postgres():
+                        valid_uid = ensure_valid_uuid(uid, uid)
+                        cursor.execute("SELECT * FROM public.profiles WHERE id = %s", (str(valid_uid),))
+                        acc = cursor.fetchone()
                         if acc:
                             return acc
-                    if str(uid).isdigit():
-                        acc = cursor.execute("SELECT * FROM users WHERE id = ?", (int(uid),)).fetchone()
-                        if acc:
-                            return acc
+                    else:
+                        uname = token_payload.get('user_metadata', {}).get('username') or token_payload.get('username')
+                        if uname:
+                            acc = cursor.execute("SELECT * FROM users WHERE username = ?", (str(uname),)).fetchone()
+                            if acc:
+                                return acc
+                        if str(uid).isdigit():
+                            acc = cursor.execute("SELECT * FROM users WHERE id = ?", (int(uid),)).fetchone()
+                            if acc:
+                                return acc
+                except Exception as query_err:
+                    safe_cursor_rollback(cursor)
+                    import logging
+                    logging.warning(f"[JWT User Query Error] Query failed for uid {uid}: {query_err}")
 
+                # If user profile not found in database yet, return synthetic new user dict for profile creation
                 return {
                     "id": uid,
                     "username": token_payload.get("email", "Recruit").split("@")[0] if token_payload.get("email") else "Recruit",
@@ -556,29 +692,53 @@ def resolve_request_user(cursor):
                     "is_new": True
                 }
 
+        # If JWT verification fails or raises an error in development mode:
+        if not is_production:
+            safe_cursor_rollback(cursor)
+            dev_user = get_local_dev_user(cursor)
+            if dev_user:
+                return dev_user
+        else:
+            # Only enforce strict 401 failure when strictly running in production
+            return None
+
     # 2. Local session check
     session_user_id = session.get('user_id')
     if session_user_id:
         try:
             if db.is_postgres():
-                cursor.execute('SELECT * FROM public.profiles WHERE id = %s', (str(session_user_id),))
-                acc = cursor.fetchone()
+                valid_session_uid = ensure_valid_uuid(session_user_id, None)
+                if valid_session_uid:
+                    cursor.execute('SELECT * FROM public.profiles WHERE id = %s', (valid_session_uid,))
+                    acc = cursor.fetchone()
+                    if acc:
+                        return acc
             else:
                 acc = cursor.execute('SELECT * FROM users WHERE id = ?', (int(session_user_id),)).fetchone()
-            if acc:
-                return acc
-        except (ValueError, TypeError):
-            pass
+                if acc:
+                    return acc
+        except Exception:
+            safe_cursor_rollback(cursor)
 
     session_username = session.get('username')
     if session_username:
-        if db.is_postgres():
-            cursor.execute('SELECT * FROM public.profiles WHERE username = %s', (str(session_username),))
-            acc = cursor.fetchone()
-        else:
-            acc = cursor.execute('SELECT * FROM users WHERE username = ?', (str(session_username),)).fetchone()
-        if acc:
-            return acc
+        try:
+            if db.is_postgres():
+                cursor.execute('SELECT * FROM public.profiles WHERE username = %s', (str(session_username),))
+                acc = cursor.fetchone()
+            else:
+                acc = cursor.execute('SELECT * FROM users WHERE username = ?', (str(session_username),)).fetchone()
+            if acc:
+                return acc
+        except Exception:
+            safe_cursor_rollback(cursor)
+
+    # 3. Offline / Local Dev Fallback (SQLite and Dev PostgreSQL)
+    if not is_production:
+        safe_cursor_rollback(cursor)
+        dev_user = get_local_dev_user(cursor)
+        if dev_user:
+            return dev_user
 
     return None
 

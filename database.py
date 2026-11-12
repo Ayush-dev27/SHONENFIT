@@ -102,6 +102,15 @@ def init_db():
 if __name__ == '__main__':
     init_db() 
 
+def init_postgres_schema(force=False):
+    """
+    Idempotent PostgreSQL schema initialization for SHONENFIT in Supabase.
+    Delegates to db.init_postgres_schema.
+    """
+    import db
+    return db.init_postgres_schema(force=force)
+ 
+
 def log_workout_session(user_id, universe, character_name, sets_data):
     """
     Saves granular set-by-set information for a completed workout session.
