@@ -32,11 +32,10 @@ def enforce_production_configuration():
                 "FATAL: SECRET_KEY must be explicitly configured in production environments. "
                 "Using default or development secrets is strictly prohibited."
             )
-        jwt_secret = os.environ.get('SUPABASE_JWT_SECRET', '').strip()
-        if not jwt_secret or jwt_secret == 'shonenfit-dev-secret':
+        supabase_url = os.environ.get('SUPABASE_URL', '').strip()
+        if not supabase_url:
             raise RuntimeError(
-                "FATAL: SUPABASE_JWT_SECRET must be explicitly configured in production environments. "
-                "Using default or development secrets is strictly prohibited."
+                "FATAL: SUPABASE_URL must be explicitly configured in production environments."
             )
 
 enforce_production_configuration()
@@ -607,12 +606,41 @@ def get_local_dev_user(cursor):
         }
 
 
+_jwks_client = None
+
+
+def get_jwks_client():
+    """
+    Returns a cached PyJWKClient configured with the Supabase JWKS endpoint.
+    Caches keys in-memory to prevent outbound network calls on every API request.
+    """
+    global _jwks_client
+    if _jwks_client is not None:
+        return _jwks_client
+
+    supabase_url = os.environ.get('SUPABASE_URL', '').strip() or 'https://ndgsxsrqspdogwnaqzsm.supabase.co'
+    jwks_url = f"{supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
+    from jwt import PyJWKClient
+    _jwks_client = PyJWKClient(jwks_url, cache_keys=True)
+    return _jwks_client
+
+
+def reset_jwks_client():
+    """Utility for testing or dynamic configuration resets."""
+    global _jwks_client
+    _jwks_client = None
+
+
 def resolve_request_user(cursor):
     """
     Authoritatively resolves the currently authenticated user.
-    1. First checks Authorization: Bearer <token> (Supabase JWT).
-    2. Checks Flask session for local development fallback.
-    Never trusts client-provided user_id or username parameters as identity.
+    1. In production (is_production=True):
+       - Strictly verifies Authorization: Bearer <token> using Supabase JWKS (RS256/ES256).
+       - Zero dev fallbacks. Invalid/missing tokens strictly return None (yielding 401 Unauthorized).
+    2. In development (not is_production):
+       - Decodes JWT claims (with verify_signature=False) for smooth local testing across algorithm types.
+       - Falls back to local dev user / recruitment profile if unauthenticated.
+    Never trusts client-provided user_id or username query/body parameters as identity.
     """
     env = os.environ.get('FLASK_ENV', 'development').lower()
     is_production = (env == 'production') or (os.environ.get('VERCEL') == '1')
@@ -621,16 +649,11 @@ def resolve_request_user(cursor):
     auth_header = request.headers.get('Authorization', '')
     if auth_header.startswith('Bearer '):
         token = auth_header[7:].strip()
-        jwt_secret = os.environ.get('SUPABASE_JWT_SECRET', '').strip()
-        if not jwt_secret and is_production:
-            raise RuntimeError("FATAL: SUPABASE_JWT_SECRET is missing in production environments.")
-
         import jwt
         token_payload = None
 
         if not is_production:
-            # In development mode, use jwt.decode directly with verify_signature=False
-            # to extract user sub and email without crashing on signature algorithm differences (HS256/RS256/ES256)
+            # In development mode, decode unverified to extract sub/email without crashing on dev algorithm mismatches
             try:
                 token_payload = jwt.decode(
                     token,
@@ -639,15 +662,16 @@ def resolve_request_user(cursor):
             except Exception as e:
                 import logging
                 logging.warning(f"[JWT Auth Dev] Unverified JWT decoding failed ({type(e).__name__}): {e}")
-                print(f"[JWT Auth Dev] Unverified JWT decoding failed ({type(e).__name__}): {e}")
                 token_payload = None
         else:
-            # Production: strict signature, audience, and algorithm verification
+            # Production: strictly verify asymmetric signature against Supabase JWKS
             try:
+                jwks_client = get_jwks_client()
+                signing_key = jwks_client.get_signing_key_from_jwt(token)
                 token_payload = jwt.decode(
                     token,
-                    jwt_secret,
-                    algorithms=['HS256', 'RS256', 'ES256'],
+                    signing_key.key,
+                    algorithms=['RS256', 'ES256'],
                     audience='authenticated',
                     options={'verify_signature': True, 'verify_exp': True, 'verify_aud': True}
                 )
@@ -655,8 +679,7 @@ def resolve_request_user(cursor):
                 error_type = type(e).__name__
                 error_msg = str(e)
                 import logging
-                logging.warning(f"[JWT Auth Error] JWT decoding failed ({error_type}): {error_msg}")
-                print(f"[JWT Auth Error] JWT decoding failed ({error_type}): {error_msg}")
+                logging.warning(f"[JWT Auth Error] Production JWKS JWT verification failed ({error_type}): {error_msg}")
                 token_payload = None
 
         if token_payload:
@@ -692,17 +715,21 @@ def resolve_request_user(cursor):
                     "is_new": True
                 }
 
-        # If JWT verification fails or raises an error in development mode:
-        if not is_production:
-            safe_cursor_rollback(cursor)
-            dev_user = get_local_dev_user(cursor)
-            if dev_user:
-                return dev_user
-        else:
-            # Only enforce strict 401 failure when strictly running in production
+        # If Bearer token was present but verification/payload failed:
+        if is_production:
             return None
 
-    # 2. Local session check
+        # In development mode: fallback to local dev user
+        safe_cursor_rollback(cursor)
+        dev_user = get_local_dev_user(cursor)
+        if dev_user:
+            return dev_user
+
+    # In production mode: missing or non-Bearer token strictly yields None (401 Unauthorized)
+    if is_production:
+        return None
+
+    # 2. Local session check (development only)
     session_user_id = session.get('user_id')
     if session_user_id:
         try:
@@ -733,12 +760,11 @@ def resolve_request_user(cursor):
         except Exception:
             safe_cursor_rollback(cursor)
 
-    # 3. Offline / Local Dev Fallback (SQLite and Dev PostgreSQL)
-    if not is_production:
-        safe_cursor_rollback(cursor)
-        dev_user = get_local_dev_user(cursor)
-        if dev_user:
-            return dev_user
+    # 3. Offline / Local Dev Fallback (development only)
+    safe_cursor_rollback(cursor)
+    dev_user = get_local_dev_user(cursor)
+    if dev_user:
+        return dev_user
 
     return None
 
